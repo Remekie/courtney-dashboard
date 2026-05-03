@@ -1,0 +1,11 @@
+/* accordion design tokens */
+:root {
+  --accordion-item-border-width: 1px;
+  --accordion-item-border-color: #dadada;
+  --accordion-item-gap: 24px;
+  --accordion-label-padding-x: 16px;
+  --accordion-label-padding-right: 46px;
+  --accordion-label-icon-right: 18px;
+  --accordion-body-padding-x: 16px;
+  --accordion-transition-duration: 0.2s;
+}

@@ -1,0 +1,10 @@
+/* embed design tokens */
+:root {
+  --embed-max-width: 800px;
+  --embed-margin: 32px auto;
+  --embed-placeholder-aspect-ratio: 16 / 9;
+  --embed-placeholder-play-size: 22px;
+  --embed-placeholder-play-border-radius: 20px;
+  --embed-placeholder-play-triangle-width: 6px;
+  --embed-placeholder-play-triangle-height: 10px;
+}

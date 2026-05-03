@@ -1,0 +1,12 @@
+/* search design tokens */
+:root {
+  --search-input-border-radius: 4px;
+  --search-results-min-width: 278px;
+  --search-results-gap: 24px;
+  --search-result-border-color: #dadada;
+  --search-result-content-padding: 16px;
+  --search-no-results-indent: 34px;
+  --search-minimal-indent: 34px;
+  --search-minimal-thumbnail-size: 24px;
+  --search-transition-duration: 0.2s;
+}

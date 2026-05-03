@@ -1,0 +1,10 @@
+/* cards design tokens */
+:root {
+  --cards-grid-min-width: 257px;
+  --cards-grid-gap: 24px;
+  --cards-card-border-width: 1px;
+  --cards-card-border-color: #dadada;
+  --cards-card-body-margin: 16px;
+  --cards-image-aspect-ratio: 4 / 3;
+  --cards-image-object-fit: cover;
+}

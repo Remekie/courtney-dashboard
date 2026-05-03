@@ -1,0 +1,12 @@
+/* modal design tokens */
+:root {
+  --modal-backdrop-background: rgb(19 19 19 / 75%);
+  --modal-width-mobile: calc(100vw - 48px);
+  --modal-width-desktop: calc(100vw - 64px);
+  --modal-max-width: 900px;
+  --modal-content-padding: 24px;
+  --modal-content-padding-desktop: 32px;
+  --modal-content-margin-top: 44px;
+  --modal-close-button-size: 44px;
+  --modal-close-icon-size: 24px;
+}

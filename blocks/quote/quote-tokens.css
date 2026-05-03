@@ -1,0 +1,7 @@
+/* quote design tokens */
+:root {
+  --quote-max-width: 900px;
+  --quote-padding: 0 24px;
+  --quote-padding-desktop: 0 32px;
+  --quote-quotation-font-size: 120%;
+}

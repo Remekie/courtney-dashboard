@@ -1,0 +1,29 @@
+@import url('./cards-tokens.css');
+
+.cards > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--cards-grid-min-width), 1fr));
+  gap: var(--cards-grid-gap);
+}
+
+.cards > ul > li {
+  border: var(--cards-card-border-width) solid var(--cards-card-border-color);
+  background-color: var(--background-color);
+}
+
+.cards .cards-card-body {
+  margin: var(--cards-card-body-margin);
+}
+
+.cards .cards-card-image {
+  line-height: 0;
+}
+
+.cards > ul > li img {
+  width: 100%;
+  aspect-ratio: var(--cards-image-aspect-ratio);
+  object-fit: var(--cards-image-object-fit);
+}

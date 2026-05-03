@@ -1,0 +1,21 @@
+/* card-carousel design tokens */
+:root {
+  --card-carousel-slide-min-width: 257px;
+  --card-carousel-gap: 24px;
+  --card-carousel-card-border-width: 1px;
+  --card-carousel-card-border-color: #dadada;
+  --card-carousel-card-body-margin: 16px;
+  --card-carousel-image-aspect-ratio: 4 / 3;
+  --card-carousel-image-object-fit: cover;
+  --card-carousel-indicators-gap: 6px 12px;
+  --card-carousel-indicators-padding: 12px;
+  --card-carousel-indicator-size: 24px;
+  --card-carousel-indicator-background: #dadada;
+  --card-carousel-indicator-active-background: var(--text-color);
+  --card-carousel-nav-inset: 12px;
+  --card-carousel-nav-inset-desktop: 24px;
+  --card-carousel-nav-button-size: 44px;
+  --card-carousel-nav-button-background: rgb(19 19 19 / 25%);
+  --card-carousel-nav-button-hover-background: rgb(19 19 19 / 75%);
+  --card-carousel-transition-duration: 0.2s;
+}

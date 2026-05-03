@@ -1,0 +1,43 @@
+@import url('./quote-tokens.css');
+
+.quote blockquote {
+  margin: 0 auto;
+  padding: var(--quote-padding);
+  max-width: var(--quote-max-width);
+}
+
+@media (width >= 900px) {
+  .quote blockquote {
+    padding: var(--quote-padding-desktop);
+  }
+}
+
+.quote blockquote .quote-quotation {
+  font-size: var(--quote-quotation-font-size);
+}
+
+.quote blockquote .quote-quotation > :first-child {
+  text-indent: -0.5ch;
+}
+
+.quote blockquote .quote-quotation p:first-child::before,
+.quote blockquote .quote-quotation p:last-child::after {
+  line-height: 0;
+}
+
+.quote blockquote .quote-quotation p:first-child::before {
+  content: '“';
+}
+
+.quote blockquote .quote-quotation p:last-child::after {
+  content: '”';
+}
+
+.quote blockquote .quote-attribution {
+  text-align: right;
+}
+
+.quote blockquote .quote-attribution p:first-child::before {
+  content: '—';
+  padding-right: 0.5ch;
+}

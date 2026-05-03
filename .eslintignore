@@ -1,0 +1,6 @@
+helix-importer-ui
+tools/**/*
+*.min.js
+sidekick-library.js
+# Aggregator manifest; xwalk rules expect a single file with models[].fields
+ue/models/component-models.json

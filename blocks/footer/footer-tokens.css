@@ -1,0 +1,6 @@
+/* footer design tokens */
+:root {
+  --footer-max-width: var(--max-width-site);
+  --footer-padding: 40px 24px 24px;
+  --footer-padding-desktop: 40px 32px 24px;
+}

@@ -1,0 +1,18 @@
+/* carousel design tokens */
+:root {
+  --carousel-content-margin: 68px;
+  --carousel-content-margin-desktop: 92px;
+  --carousel-content-padding: 16px;
+  --carousel-content-background: rgb(19 19 19 / 75%);
+  --carousel-indicators-gap: 6px 12px;
+  --carousel-indicators-padding: 12px;
+  --carousel-indicator-size: 24px;
+  --carousel-indicator-background: #dadada;
+  --carousel-indicator-active-background: var(--text-color);
+  --carousel-nav-inset: 12px;
+  --carousel-nav-inset-desktop: 24px;
+  --carousel-nav-button-size: 44px;
+  --carousel-nav-button-background: rgb(19 19 19 / 25%);
+  --carousel-nav-button-hover-background: rgb(19 19 19 / 75%);
+  --carousel-transition-duration: 0.2s;
+}

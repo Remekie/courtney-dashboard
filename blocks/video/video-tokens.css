@@ -1,0 +1,10 @@
+/* video design tokens */
+:root {
+  --video-max-width: 900px;
+  --video-margin: 24px auto;
+  --video-aspect-ratio: 16 / 9;
+  --video-placeholder-play-size: 44px;
+  --video-placeholder-play-triangle-height: 24px;
+  --video-placeholder-play-triangle-width: 18px;
+  --video-placeholder-play-left-offset: 2px;
+}

@@ -1,0 +1,13 @@
+/* form design tokens */
+:root {
+  --form-field-gap: 24px;
+  --form-input-border-radius: 4px;
+  --form-input-outline-offset: 2px;
+  --form-required-indicator-color: firebrick;
+  --form-toggle-width: 52px;
+  --form-toggle-height: 28px;
+  --form-toggle-slider-size: 24px;
+  --form-toggle-slider-offset: 2px;
+  --form-toggle-slider-translate: 24px;
+  --form-transition-duration: 0.2s;
+}
