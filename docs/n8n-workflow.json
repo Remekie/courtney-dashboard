@@ -1,0 +1,209 @@
+{
+  "name": "Comms Dashboard — All Sources",
+  "description": "Polls Outlook, Teams, Gmail (OAuth2), Google Calendar, and Zyra IMAP every 15 minutes and pushes JSON to the comms-data Cloudflare Worker.",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      },
+      "position": [0, 0]
+    },
+    {
+      "id": "outlook-inbox",
+      "name": "Get Outlook unread",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "credentials": { "microsoftOutlookOAuth2Api": "Adobe Outlook (remekie@adobe.com)" },
+      "parameters": {
+        "operation": "getAll",
+        "filters": {
+          "isRead": false,
+          "select": "subject,from,receivedDateTime,flag",
+          "top": 50
+        },
+        "options": {
+          "folder": "inbox"
+        }
+      },
+      "position": [200, -200]
+    },
+    {
+      "id": "outlook-calendar",
+      "name": "Get Outlook calendar (7 days)",
+      "type": "n8n-nodes-base.microsoftOutlook",
+      "credentials": { "microsoftOutlookOAuth2Api": "Adobe Outlook (remekie@adobe.com)" },
+      "parameters": {
+        "operation": "getAll",
+        "resource": "event",
+        "filters": {
+          "startDateTime": "={{ $now.startOf('week').toISO() }}",
+          "endDateTime": "={{ $now.endOf('week').toISO() }}",
+          "select": "subject,organizer,start,end,isAllDay"
+        }
+      },
+      "position": [200, 0]
+    },
+    {
+      "id": "teams-activity",
+      "name": "Get Teams channel posts",
+      "type": "n8n-nodes-base.microsoftTeams",
+      "credentials": { "microsoftTeamsOAuth2Api": "Adobe Teams (remekie@adobe.com)" },
+      "parameters": {
+        "operation": "getAll",
+        "resource": "channelMessage",
+        "teamId": "={{ $vars.TEAMS_TEAM_ID }}",
+        "channelId": "={{ $vars.TEAMS_CHANNEL_ID }}",
+        "returnAll": false,
+        "limit": 20
+      },
+      "position": [200, 200]
+    },
+    {
+      "id": "gmail-inbox",
+      "name": "Get Gmail unread (personal + family filter)",
+      "type": "n8n-nodes-base.gmail",
+      "credentials": { "gmailOAuth2": "Gmail (courtney.remekie@gmail.com)" },
+      "parameters": {
+        "operation": "getAll",
+        "filters": {
+          "q": "is:unread (theo OR soccer OR football OR jayleen OR kyra OR BTB OR CDMFA)",
+          "maxResults": 20,
+          "includeSpamTrash": false
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "",
+          "format": "metadata",
+          "metadataHeaders": ["From", "Subject", "Date"]
+        }
+      },
+      "position": [200, 400]
+    },
+    {
+      "id": "gcalendar",
+      "name": "Get Google Calendar (this week)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "credentials": { "googleCalendarOAuth2Api": "Google Calendar (courtney.remekie@gmail.com)" },
+      "parameters": {
+        "operation": "getAll",
+        "calendarId": "primary",
+        "returnAll": false,
+        "limit": 50,
+        "options": {
+          "timeMin": "={{ $now.startOf('week').toISO() }}",
+          "timeMax": "={{ $now.endOf('week').toISO() }}",
+          "orderBy": "startTime",
+          "singleEvents": true
+        }
+      },
+      "position": [200, 600]
+    },
+    {
+      "id": "zyra-imap",
+      "name": "Get Zyra email (IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "credentials": { "imap": "Zyra IMAP (courtney@drinkzyra.com)" },
+      "parameters": {
+        "mailbox": "INBOX",
+        "action": "read",
+        "format": "simple",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "customEmailConfig": "[\"UNSEEN\"]",
+          "downloadAttachments": false
+        }
+      },
+      "position": [200, 800]
+    },
+    {
+      "id": "transform-outlook",
+      "name": "Transform Outlook data",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst emails = items.map(i => i.json);\nconst unread = emails.length;\nconst meetings = emails.filter(e => e.subject?.match(/meeting|call|invite|zoom|teams/i)).slice(0, 8).map(e => ({ subject: e.subject, from: e.from?.emailAddress?.name || e.from?.emailAddress?.address || '' }));\nconst people = emails.filter(e => e.from?.emailAddress?.address?.endsWith('@adobe.com')).slice(0, 8).map(e => ({ subject: e.subject, from: e.from?.emailAddress?.name || '' }));\nconst flagged = emails.filter(e => e.flag?.flagStatus === 'flagged').map(e => ({ subject: e.subject, from: e.from?.emailAddress?.name || '' }));\nreturn [{ json: { unreadCount: unread, meetings, people, flagged } }];"
+      },
+      "position": [400, -200]
+    },
+    {
+      "id": "transform-calendar",
+      "name": "Transform calendar events",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const events = $input.all().map(i => i.json);\nconst days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];\nconst today = new Date().toDateString();\nconst mapped = events.map(ev => {\n  const start = new Date(ev.start?.dateTime || ev.start?.date);\n  const isToday = start.toDateString() === today;\n  const h = start.getHours() % 12 || 12;\n  const m = String(start.getMinutes()).padStart(2, '0');\n  const ampm = start.getHours() >= 12 ? 'PM' : 'AM';\n  return {\n    day: `${days[start.getDay()]} ${start.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`,\n    time: ev.isAllDay ? 'All day' : `${h}:${m} ${ampm}`,\n    title: ev.subject || ev.summary,\n    organizer: ev.organizer?.emailAddress?.name || '',\n    isToday,\n    tag: ev.subject?.match(/soccer|BTB|raiders/i) ? 'Soccer' : ev.subject?.match(/football|CDMFA/i) ? 'Football' : ev.subject?.match(/demo/i) ? 'Demo' : ev.subject?.match(/1:1/i) ? '1:1' : null,\n    tagColor: ev.subject?.match(/soccer|BTB|raiders/i) ? 'blue' : ev.subject?.match(/football/i) ? 'orange' : ev.subject?.match(/demo/i) ? 'orange' : 'blue'\n  };\n});\nconst weekLabel = `Week of ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${new Date(Date.now()+6*864e5).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;\nreturn [{ json: { weekLabel, events: mapped } }];"
+      },
+      "position": [400, 0]
+    },
+    {
+      "id": "transform-gmail",
+      "name": "Transform Gmail",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst tagMap = { soccer: ['soccer','btb','raiders','forza','juventus'], football: ['football','cdmfa','effa'], kyra: ['kyra'], jayleen: ['jayleen'], family: ['family'] };\nconst filtered = items.map(i => {\n  const from = i.json.payload?.headers?.find(h => h.name === 'From')?.value || '';\n  const subject = i.json.payload?.headers?.find(h => h.name === 'Subject')?.value || '';\n  let tag = 'Family'; let tagColor = 'purple';\n  const sl = subject.toLowerCase();\n  if (sl.match(/soccer|btb|raiders/)) { tag = 'Soccer'; tagColor = 'blue'; }\n  else if (sl.match(/football|cdmfa/)) { tag = 'Football'; tagColor = 'orange'; }\n  else if (sl.match(/kyra/)) { tag = 'Kyra'; tagColor = 'purple'; }\n  return { from: from.split('<')[0].trim(), subject, tag, tagColor };\n}).slice(0, 10);\nreturn [{ json: { unreadCount: items.length, filtered } }];"
+      },
+      "position": [400, 400]
+    },
+    {
+      "id": "transform-gcal",
+      "name": "Transform Google Calendar",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const events = $input.all().map(i => i.json);\nconst days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];\nconst today = new Date().toDateString();\nconst mapped = events.map(ev => {\n  const start = new Date(ev.start?.dateTime || ev.start?.date);\n  const isToday = start.toDateString() === today;\n  const h = start.getHours() % 12 || 12;\n  const m = String(start.getMinutes()).padStart(2, '0');\n  const ampm = start.getHours() >= 12 ? 'PM' : 'AM';\n  return {\n    day: `${days[start.getDay()]} ${start.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`,\n    time: !ev.start?.dateTime ? 'All day' : `${h}:${m} ${ampm}`,\n    title: ev.summary,\n    location: ev.location || '',\n    organizer: ev.organizer?.displayName || '',\n    isToday,\n    isPersonal: true,\n    tag: ev.summary?.match(/soccer|BTB|raiders/i) ? 'Soccer' : ev.summary?.match(/football|CDMFA/i) ? 'Football' : ev.summary?.match(/theo|jayleen|kyra/i) ? 'Family' : 'Personal',\n    tagColor: ev.summary?.match(/soccer/i) ? 'blue' : ev.summary?.match(/football/i) ? 'orange' : ev.summary?.match(/theo|jayleen|kyra/i) ? 'purple' : 'gray'\n  };\n});\nconst weekLabel = `Week of ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${new Date(Date.now()+6*864e5).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;\nreturn [{ json: { weekLabel, events: mapped } }];"
+      },
+      "position": [400, 600]
+    },
+    {
+      "id": "transform-zyra",
+      "name": "Transform Zyra email",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst tagMap = { Partnership: /partner|collab|introduction|i reach out/i, Event: /rate card|booth|festival|event/i, Analytics: /recap|report|analytics/i, Banking: /bank|statement/i, Business: /business|product|profile/i };\nconst filtered = items.filter(i => !i.json.subject?.match(/uline|DHL routine|catalog/i)).map(i => {\n  const from = (i.json.from || '').split('<')[0].trim();\n  const subject = i.json.subject || '';\n  let tag = 'Business'; let tagColor = 'blue';\n  for (const [t, re] of Object.entries(tagMap)) { if (re.test(subject) || re.test(from)) { tag = t; tagColor = t === 'Partnership' ? 'green' : t === 'Event' ? 'amber' : t === 'Analytics' ? 'blue' : t === 'Banking' ? 'gray' : 'blue'; break; } }\n  return { from, subject, tag, tagColor };\n}).slice(0, 10);\nreturn [{ json: { unreadCount: items.length, filtered } }];"
+      },
+      "position": [400, 800]
+    },
+    {
+      "id": "push-to-worker",
+      "name": "POST all data to Cloudflare Worker",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "method": "POST",
+        "url": "https://comms-data.remekie.workers.dev/data",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $vars.WORKER_WRITE_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({ outlook: $('Transform Outlook data').first().json, gcalendar: $('Transform calendar events').first().json, gmail: $('Transform Gmail').first().json, calendar: $('Transform Google Calendar').first().json, zyra: $('Transform Zyra email').first().json }) }}"
+      },
+      "position": [600, 300]
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": { "main": [[
+      { "node": "Get Outlook unread", "type": "main", "index": 0 },
+      { "node": "Get Outlook calendar (7 days)", "type": "main", "index": 0 },
+      { "node": "Get Teams channel posts", "type": "main", "index": 0 },
+      { "node": "Get Gmail unread (personal + family filter)", "type": "main", "index": 0 },
+      { "node": "Get Google Calendar (this week)", "type": "main", "index": 0 },
+      { "node": "Get Zyra email (IMAP)", "type": "main", "index": 0 }
+    ]] },
+    "Get Outlook unread": { "main": [[{ "node": "Transform Outlook data", "type": "main", "index": 0 }]] },
+    "Get Outlook calendar (7 days)": { "main": [[{ "node": "Transform calendar events", "type": "main", "index": 0 }]] },
+    "Get Gmail unread (personal + family filter)": { "main": [[{ "node": "Transform Gmail", "type": "main", "index": 0 }]] },
+    "Get Google Calendar (this week)": { "main": [[{ "node": "Transform Google Calendar", "type": "main", "index": 0 }]] },
+    "Get Zyra email (IMAP)": { "main": [[{ "node": "Transform Zyra email", "type": "main", "index": 0 }]] },
+    "Transform Outlook data": { "main": [[{ "node": "POST all data to Cloudflare Worker", "type": "main", "index": 0 }]] },
+    "Transform calendar events": { "main": [[{ "node": "POST all data to Cloudflare Worker", "type": "main", "index": 0 }]] },
+    "Transform Gmail": { "main": [[{ "node": "POST all data to Cloudflare Worker", "type": "main", "index": 0 }]] },
+    "Transform Google Calendar": { "main": [[{ "node": "POST all data to Cloudflare Worker", "type": "main", "index": 0 }]] },
+    "Transform Zyra email": { "main": [[{ "node": "POST all data to Cloudflare Worker", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null
+}

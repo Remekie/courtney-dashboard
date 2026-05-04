@@ -354,6 +354,23 @@
           }
         },
         {
+          "title": "Comms Dashboard",
+          "id": "comms-dashboard",
+          "plugins": {
+            "da": {
+              "name": "comms-dashboard",
+              "rows": 1,
+              "columns": 1,
+              "fields": [
+                {
+                  "name": "workerUrl",
+                  "selector": "div>div>p"
+                }
+              ]
+            }
+          }
+        },
+        {
           "title": "Video",
           "id": "video",
           "model": "video",

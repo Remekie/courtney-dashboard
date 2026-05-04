@@ -1,0 +1,16 @@
+name = "comms-data"
+main = "comms-data.js"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# KV namespace — create with: wrangler kv namespace create COMMS_DATA
+# Then replace the id below with the output id
+[[kv_namespaces]]
+binding = "COMMS_DATA"
+id = "a57206e03d7b47539933eaf1b398e87e"
+
+# Secrets (set via: wrangler secret put WRITE_TOKEN)
+# WRITE_TOKEN — shared secret used by Power Automate / n8n to POST data
+
+[env.production]
+name = "comms-data"
