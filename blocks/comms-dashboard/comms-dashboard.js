@@ -1,15 +1,16 @@
 /**
- * Comms Dashboard block
- * Fetches live data from the comms-data Cloudflare Worker and renders
- * the full dashboard: Work (Slack/Teams/Outlook), Meetings, Personal, Files.
+ * Comms Dashboard block — Adobe Spectrum 2
  *
- * Block authoring: single table with one cell containing the worker URL.
- * Falls back to static skeleton when worker data is unavailable.
+ * Fetches live data from comms-data Cloudflare Worker, renders all
+ * communication sources across 4 tabs with 60s polling.
+ *
+ * Block authoring: single table cell containing the Worker URL.
+ * Worker URL default: https://comms-data.remekie.workers.dev
  */
 
-const POLL_INTERVAL = 60_000; // 60 s
+const POLL_INTERVAL = 60_000;
 
-// ── Helpers ───────────────────────────────────────────────────
+// ── Spectrum helpers ──────────────────────────────────────
 
 function el(tag, cls, html = '') {
   const e = document.createElement(tag);
@@ -18,26 +19,32 @@ function el(tag, cls, html = '') {
   return e;
 }
 
-function chip(text, color = 'gray') {
-  return `<span class="cd-chip cd-chip-${color}">${text}</span>`;
+/** Map source/tag names to Spectrum semantic badge variants */
+function badgeVariant(tag) {
+  const t = (tag || '').toLowerCase();
+  if (/soccer|teams|collab|1:1/i.test(t)) return 'info';
+  if (/football|urgent|negative|demo/i.test(t)) return 'notice';
+  if (/partnership|positive|family|kyra|jayleen/i.test(t)) return 'positive';
+  if (/analytics|business|adobe|recording/i.test(t)) return 'neutral';
+  if (/event|amber/i.test(t)) return 'notice';
+  if (/banking|gray/i.test(t)) return 'neutral';
+  if (/purple/i.test(t)) return 'purple';
+  return 'info';
+}
+
+function badge(text, variant) {
+  const v = variant || badgeVariant(text);
+  return `<span class="cd-badge cd-badge-${v}">${text}</span>`;
 }
 
 function personChip(initials, name) {
   return `<span class="cd-person-chip"><span class="cd-av">${initials}</span>${name}</span>`;
 }
 
-function fmtTime(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  const h = d.getHours() % 12 || 12;
-  const m = String(d.getMinutes()).padStart(2, '0');
-  return `${h}:${m} ${d.getHours() >= 12 ? 'PM' : 'AM'}`;
-}
-
 function relativeDate(isoString) {
   if (!isoString) return '';
   const diff = Date.now() - new Date(isoString).getTime();
-  const mins = Math.round(diff / 60000);
+  const mins = Math.round(diff / 60_000);
   if (mins < 2) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.round(mins / 60);
@@ -45,7 +52,7 @@ function relativeDate(isoString) {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
-// ── Data fetching ─────────────────────────────────────────────
+// ── Data fetch ────────────────────────────────────────────
 
 async function fetchData(workerUrl) {
   try {
@@ -58,44 +65,59 @@ async function fetchData(workerUrl) {
   }
 }
 
-// ── Render helpers ────────────────────────────────────────────
+// ── Work tab: Slack ───────────────────────────────────────
 
-function renderSlack(data) {
-  const d = data?.slack?.data;
-  if (!d) return renderFallbackSlack();
+function renderSlack(d) {
+  const sd = d?.slack?.data;
+  if (!sd) {
+    return `
+      <div class="cd-card-head">
+        <div><div class="cd-card-heading">Slack</div>
+        <div class="cd-card-subheading">Adobe Enterprise Workspace · not yet connected</div></div>
+      </div>
+      <div class="cd-empty-state">
+        <div class="cd-empty-title">Awaiting n8n connection</div>
+        n8n Slack node → transform → POST /data/slack
+      </div>`;
+  }
 
-  const channels = (d.pinnedChannels || []).map((ch) => `
+  const unread = sd.unreadCount
+    ? badge(sd.unreadCount, 'neutral')
+    : '';
+  const upd = d.slack?.updatedAt
+    ? `<span class="cd-last-updated">${relativeDate(d.slack.updatedAt)}</span>`
+    : '';
+
+  const channels = (sd.pinnedChannels || []).map((ch) => `
     <tr>
       <td class="cd-bold">#${ch.name}</td>
-      <td>${ch.lastMessage ? `"${ch.lastMessage}" <span class="cd-muted">— ${ch.lastMessageDate || ''}</span>` : '<span class="cd-muted">—</span>'}</td>
+      <td>${ch.lastMessage
+        ? `"${ch.lastMessage}" <span class="cd-muted">— ${ch.lastMessageDate || ''}</span>`
+        : '<span class="cd-muted">—</span>'}</td>
     </tr>`).join('');
 
-  const people = (d.priorityPeople || []).map((p) => personChip(p.initials, p.name)).join('');
+  const people = (sd.priorityPeople || [])
+    .map((p) => personChip(p.initials, p.name)).join('');
 
-  const mentions = (d.mentions || []).map((m) => `
+  const mentions = (sd.mentions || []).map((m) => `
     <tr>
       <td class="cd-col-date">${m.date}</td>
       <td class="cd-bold">${m.from}</td>
       <td>${m.channel}</td>
     </tr>`).join('');
 
-  const unread = d.unreadCount ? `${chip(d.unreadCount, 'gray')}` : '';
-  const updated = data.slack?.updatedAt ? `<span class="cd-last-updated">${relativeDate(data.slack.updatedAt)}</span>` : '';
-
   return `
     <div class="cd-card-head">
-      <div>
-        <div class="cd-card-heading">Slack ${unread} ${updated}</div>
-        <div class="cd-card-subheading">Adobe Enterprise Workspace</div>
-      </div>
+      <div><div class="cd-card-heading">Slack ${unread} ${upd}</div>
+      <div class="cd-card-subheading">Adobe Enterprise Workspace</div></div>
     </div>
     <span class="cd-section-label">Pinned Channels</span>
     <table class="cd-ctable">
       <thead><tr><th>Channel</th><th>Last Message</th></tr></thead>
-      <tbody>${channels || '<tr><td colspan="2" class="cd-muted">No channels</td></tr>'}</tbody>
+      <tbody>${channels || '<tr><td colspan="2" class="cd-muted">No pinned channels</td></tr>'}</tbody>
     </table>
     <span class="cd-section-label">Priority People</span>
-    <div class="cd-people-wrap">${people}</div>
+    <div class="cd-people-wrap">${people || '<span class="cd-muted">No people configured</span>'}</div>
     <span class="cd-section-label">Direct @mentions</span>
     <table class="cd-ctable">
       <thead><tr><th>Date</th><th>From</th><th>Channel</th></tr></thead>
@@ -106,100 +128,108 @@ function renderSlack(data) {
     </div>`;
 }
 
-function renderFallbackSlack() {
-  return `
-    <div class="cd-card-head">
-      <div>
-        <div class="cd-card-heading">Slack <span class="cd-live-dot"></span></div>
-        <div class="cd-card-subheading">Adobe Enterprise Workspace · waiting for data</div>
+// ── Work tab: Teams ───────────────────────────────────────
+
+function renderTeams(d) {
+  const td = d?.teams?.data;
+  if (!td) {
+    return `
+      <div class="cd-card-head">
+        <div><div class="cd-card-heading">Teams</div>
+        <div class="cd-card-subheading">Microsoft Teams · not yet connected</div></div>
       </div>
-    </div>
-    <div class="cd-empty-state">
-      <div class="cd-empty-title">Not yet connected</div>
-      Set up the n8n or Power Automate integration to see live Slack data here.
-    </div>`;
-}
+      <div class="cd-empty-state">
+        <div class="cd-empty-title">Set up Power Automate</div>
+        Power Automate (Teams connector) → POST /data/teams
+      </div>`;
+  }
 
-function renderTeams(data) {
-  const d = data?.teams?.data;
-  if (!d) return renderFallbackTeams();
+  const upd = d.teams?.updatedAt
+    ? `<span class="cd-last-updated">${relativeDate(d.teams.updatedAt)}</span>`
+    : '';
 
-  const meetings = (d.watchedMeetings || []).map((m) => `
+  const meetings = (td.watchedMeetings || []).map((m) => `
     <tr>
       <td class="cd-bold">${m.name}</td>
       <td>${m.organizer || ''}</td>
       <td class="cd-col-cadence">${m.cadence || ''}</td>
-      <td class="cd-col-action"><button class="cd-btn cd-btn-sm" data-recordings="${m.name}">Recordings</button></td>
+      <td class="cd-col-action">
+        <button class="cd-btn cd-btn-sm" data-recordings="${m.name}">Recordings</button>
+      </td>
     </tr>`).join('');
 
-  const teams = (d.watchedTeams || []).map((t) => `
+  const teams = (td.watchedTeams || []).map((t) => `
     <tr>
       <td class="cd-bold">${t.name}</td>
       <td class="cd-col-date">${t.lastActive || '—'}</td>
     </tr>`).join('');
 
-  const updated = data.teams?.updatedAt ? `<span class="cd-last-updated">${relativeDate(data.teams.updatedAt)}</span>` : '';
-
   return `
     <div class="cd-card-head">
-      <div>
-        <div class="cd-card-heading">Teams ${updated}</div>
-        <div class="cd-card-subheading">Microsoft Teams</div>
-      </div>
+      <div><div class="cd-card-heading">Teams ${upd}</div>
+      <div class="cd-card-subheading">Microsoft Teams</div></div>
     </div>
     <span class="cd-section-label">Watched Meetings</span>
     <table class="cd-ctable">
       <thead><tr><th>Meeting</th><th>Organizer</th><th class="cd-col-cadence">Cadence</th><th class="cd-col-action"></th></tr></thead>
-      <tbody>${meetings || '<tr><td colspan="4" class="cd-muted">No meetings</td></tr>'}</tbody>
+      <tbody>${meetings || '<tr><td colspan="4" class="cd-muted">No meetings configured</td></tr>'}</tbody>
     </table>
     <span class="cd-section-label">Watched Teams</span>
     <table class="cd-ctable">
       <thead><tr><th>Team</th><th class="cd-col-date">Last Active</th></tr></thead>
-      <tbody>${teams || '<tr><td colspan="2" class="cd-muted">No teams</td></tr>'}</tbody>
+      <tbody>${teams || '<tr><td colspan="2" class="cd-muted">No teams configured</td></tr>'}</tbody>
     </table>
     <div class="cd-action-row">
-      <button class="cd-btn cd-btn-sm" data-refresh="teams">Refresh Teams Activity</button>
+      <button class="cd-btn cd-btn-sm" data-refresh="teams">Refresh Teams</button>
     </div>`;
 }
 
-function renderFallbackTeams() {
-  return `
-    <div class="cd-card-head">
-      <div>
-        <div class="cd-card-heading">Teams</div>
-        <div class="cd-card-subheading">Microsoft Teams · waiting for data</div>
+// ── Work tab: Outlook ─────────────────────────────────────
+
+function renderOutlook(d) {
+  const od = d?.outlook?.data;
+  if (!od) {
+    return `
+      <div class="cd-card-head">
+        <div><div class="cd-card-heading">Outlook</div>
+        <div class="cd-card-subheading">remekie@adobe.com · not yet connected</div></div>
+        <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
       </div>
-    </div>
-    <div class="cd-empty-state">
-      <div class="cd-empty-title">Not yet connected</div>
-      Set up Power Automate to push Teams data to the Cloudflare Worker.
-    </div>`;
-}
+      <div class="cd-empty-state">
+        <div class="cd-empty-title">Set up Power Automate</div>
+        See docs/power-automate-setup.md
+      </div>`;
+  }
 
-function renderOutlook(data) {
-  const d = data?.outlook?.data;
-  if (!d) return renderFallbackOutlook();
+  const unread = od.unreadCount ?? 0;
+  const upd = d.outlook?.updatedAt
+    ? `<span class="cd-last-updated">${relativeDate(d.outlook.updatedAt)}</span>`
+    : '';
 
-  const unread = d.unreadCount ?? 0;
-  const updated = data.outlook?.updatedAt ? `<span class="cd-last-updated">${relativeDate(data.outlook.updatedAt)}</span>` : '';
-
-  const meetings = (d.meetings || []).slice(0, 6).map((m) => `
+  const meetings = (od.meetings || []).slice(0, 6).map((m) => `
     <tr><td class="cd-bold">${m.subject}</td></tr>
     <tr><td class="cd-muted" style="padding-top:0;border:none">${m.from || ''}</td></tr>`).join('');
 
-  const people = (d.people || []).slice(0, 6).map((p) => `
+  const people = (od.people || []).slice(0, 6).map((p) => `
     <tr><td class="cd-bold">${p.subject}</td></tr>
     <tr><td class="cd-muted" style="padding-top:0;border:none">${p.from || ''}</td></tr>`).join('');
 
-  const flagged = (d.flagged || []);
-  const flaggedHtml = flagged.length
-    ? flagged.map((f) => `<tr><td class="cd-bold">${f.subject}</td></tr>`).join('')
-    : `<div class="cd-empty-state"><div class="cd-empty-title">No flagged emails</div>Flag items in Outlook to surface them here.</div>`;
+  const flagged = od.flagged || [];
+  const flaggedContent = flagged.length
+    ? `<table class="cd-ctable"><tbody>${flagged.map((f) => `<tr><td class="cd-bold">${f.subject}</td></tr>`).join('')}</tbody></table>`
+    : `<div class="cd-empty-state" style="padding:16px 0">
+        <div class="cd-empty-title">No flagged emails</div>
+        Flag items in Outlook to surface them here.
+       </div>`;
 
   return `
     <div class="cd-card-head">
       <div>
-        <div class="cd-card-heading">Outlook ${chip(`${unread} unread`, unread > 100 ? 'red' : 'gray')} ${updated}</div>
+        <div class="cd-card-heading">
+          Outlook
+          ${badge(`${unread.toLocaleString()} unread`, unread > 100 ? 'negative' : 'neutral')}
+          ${upd}
+        </div>
         <div class="cd-card-subheading">remekie@adobe.com</div>
       </div>
       <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
@@ -210,12 +240,12 @@ function renderOutlook(data) {
         <table class="cd-ctable"><tbody>${meetings || '<tr><td class="cd-muted">None</td></tr>'}</tbody></table>
       </div>
       <div>
-        <span class="cd-section-label cd-mt-0">People <span class="cd-chip cd-chip-green">adobe.com</span></span>
+        <span class="cd-section-label cd-mt-0">People ${badge('adobe.com', 'positive')}</span>
         <table class="cd-ctable"><tbody>${people || '<tr><td class="cd-muted">None</td></tr>'}</tbody></table>
       </div>
       <div>
         <span class="cd-section-label cd-mt-0">To-Do / Flagged</span>
-        ${typeof flaggedHtml === 'string' && flagged.length ? `<table class="cd-ctable"><tbody>${flaggedHtml}</tbody></table>` : flaggedHtml}
+        ${flaggedContent}
         <div class="cd-action-row" style="justify-content:center">
           <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
         </div>
@@ -224,48 +254,44 @@ function renderOutlook(data) {
     <div class="cd-filter-note">Filters active — hiding Uber receipts, LinkedIn alerts, Concur notifications, automated senders</div>`;
 }
 
-function renderFallbackOutlook() {
-  return `
-    <div class="cd-card-head">
-      <div>
-        <div class="cd-card-heading">Outlook</div>
-        <div class="cd-card-subheading">remekie@adobe.com · waiting for data</div>
-      </div>
-      <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
-    </div>
-    <div class="cd-empty-state">
-      <div class="cd-empty-title">Not yet connected</div>
-      Power Automate will push Outlook unread counts and flagged items here.
-    </div>`;
-}
+// ── Meetings tab ──────────────────────────────────────────
 
-function renderMeetings(data) {
-  const d = data?.outlook?.data?.calendar || data?.calendar?.data;
-  if (!d || !d.events?.length) return renderFallbackMeetings();
+function renderMeetings(d) {
+  const cal = d?.outlook?.data?.calendar || d?.gcalendar?.data;
+  if (!cal?.events?.length) {
+    return `
+      <div class="cd-card-head">
+        <div><div class="cd-card-heading">This Week</div>
+        <div class="cd-card-subheading">Awaiting calendar data from Power Automate</div></div>
+        <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/calendar" target="_blank">Open Calendar</a>
+      </div>
+      <div class="cd-empty-state">
+        <div class="cd-empty-title">Calendar not yet connected</div>
+        Power Automate → Outlook Calendar → POST /data/gcalendar
+      </div>`;
+  }
 
   let lastDay = '';
-  const rows = d.events.map((ev) => {
+  const rows = cal.events.map((ev) => {
     let dayRow = '';
     if (ev.day !== lastDay) {
       lastDay = ev.day;
-      const isToday = ev.isToday ? `<span class="cd-chip-today">Today</span>` : '';
-      dayRow = `<tr class="cd-day-header"><td colspan="4">${ev.day} ${isToday}</td></tr>`;
+      const todayChip = ev.isToday ? `<span class="cd-badge cd-badge-today">Today</span>` : '';
+      dayRow = `<tr class="cd-day-header"><td colspan="4">${ev.day} ${todayChip}</td></tr>`;
     }
-    const tag = ev.tag ? chip(ev.tag, ev.tagColor || 'gray') : '';
+    const tagHtml = ev.tag ? badge(ev.tag, badgeVariant(ev.tag)) : '';
     return `${dayRow}<tr>
       <td class="cd-col-time">${ev.time || '—'}</td>
       <td class="cd-bold">${ev.title}</td>
       <td>${ev.organizer || ''}</td>
-      <td class="cd-col-tag">${tag}</td>
+      <td class="cd-col-tag">${tagHtml}</td>
     </tr>`;
   }).join('');
 
   return `
     <div class="cd-card-head">
-      <div>
-        <div class="cd-card-heading">This Week</div>
-        <div class="cd-card-subheading">${d.weekLabel || 'This week'} · All times MDT · Edmonton</div>
-      </div>
+      <div><div class="cd-card-heading">This Week</div>
+      <div class="cd-card-subheading">${cal.weekLabel || 'This week'} · All times MDT · Edmonton</div></div>
       <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/calendar" target="_blank">Open Calendar</a>
     </div>
     <table class="cd-ctable cd-mt-16">
@@ -274,128 +300,230 @@ function renderMeetings(data) {
     </table>`;
 }
 
-function renderFallbackMeetings() {
-  return `
-    <div class="cd-card-head">
-      <div>
-        <div class="cd-card-heading">This Week</div>
-        <div class="cd-card-subheading">Waiting for calendar data from Power Automate</div>
-      </div>
-      <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/calendar" target="_blank">Open Calendar</a>
-    </div>
-    <div class="cd-empty-state">
-      <div class="cd-empty-title">Calendar not yet connected</div>
-      Set up Power Automate to push calendar events here.
-    </div>`;
-}
+// ── Personal tab: Gmail ───────────────────────────────────
 
-function renderPersonal(data) {
-  const gmail = data?.gmail?.data;
-  const cal = data?.calendar?.data;
+function renderGmail(d) {
+  const gd = d?.gmail?.data;
+  const unread = gd?.unreadCount ?? '—';
+  const upd = d?.gmail?.updatedAt
+    ? `<span class="cd-last-updated">${relativeDate(d.gmail.updatedAt)}</span>`
+    : '';
 
-  const gmailRows = gmail ? (gmail.filtered || []).slice(0, 8).map((m) => `
+  const rows = gd ? (gd.filtered || []).slice(0, 8).map((m) => `
     <tr>
       <td class="cd-bold">${m.from}</td>
       <td>${m.subject}</td>
-      <td class="cd-col-tag">${chip(m.tag, m.tagColor || 'gray')}</td>
+      <td class="cd-col-tag">${badge(m.tag, badgeVariant(m.tag))}</td>
     </tr>`).join('') : null;
-
-  const calRows = cal ? (cal.events || []).filter((e) => e.isPersonal).slice(0, 10).map((ev) => `
-    <tr>
-      <td class="cd-bold">${ev.day || ''}${ev.isToday ? ' <span class="cd-chip-today">Today</span>' : ''}</td>
-      <td class="cd-col-time">${ev.time}</td>
-      <td>${ev.title}</td>
-      <td class="cd-muted">${ev.location || ''}</td>
-      <td class="cd-col-tag">${ev.tag ? chip(ev.tag, ev.tagColor || 'gray') : ''}</td>
-    </tr>`).join('') : null;
-
-  const gmailUnread = gmail?.unreadCount ?? '—';
-  const gmailUpdated = data?.gmail?.updatedAt ? `<span class="cd-last-updated">${relativeDate(data.gmail.updatedAt)}</span>` : '';
 
   return `
-    <div class="cd-grid-2 cd-personal-grid">
-      <div class="cd-card">
-        <div class="cd-card-head">
-          <div>
-            <div class="cd-card-heading">Gmail <span class="cd-badge-negative">${gmailUnread} unread</span> ${gmailUpdated}</div>
-            <div class="cd-card-subheading">courtney.remekie@gmail.com</div>
-          </div>
-          <a class="cd-btn cd-btn-sm" href="https://mail.google.com" target="_blank">Open Gmail</a>
+    <div class="cd-card-head">
+      <div>
+        <div class="cd-card-heading">
+          Gmail
+          <span class="cd-unread-pill">${unread} unread</span>
+          ${upd}
         </div>
-        <div class="cd-filter-pill">Family filter: Theo · Soccer · Football · Jayleen · Kyra</div>
-        ${gmailRows ? `<table class="cd-ctable cd-mt-16">
+        <div class="cd-card-subheading">courtney.remekie@gmail.com</div>
+      </div>
+      <a class="cd-btn cd-btn-sm" href="https://mail.google.com" target="_blank">Open Gmail</a>
+    </div>
+    <div class="cd-filter-pill">Family filter: Theo · Soccer · Football · Jayleen · Kyra</div>
+    ${rows
+      ? `<table class="cd-ctable cd-mt-16">
           <thead><tr><th>From</th><th>Subject</th><th class="cd-col-tag">Tag</th></tr></thead>
-          <tbody>${gmailRows}</tbody>
-        </table>` : '<div class="cd-empty-state"><div class="cd-empty-title">Gmail not connected</div>Connect via n8n or OAuth.</div>'}
-      </div>
+          <tbody>${rows}</tbody>
+        </table>`
+      : '<div class="cd-empty-state"><div class="cd-empty-title">Gmail not connected</div>n8n Gmail OAuth2 node → POST /data/gmail</div>'}`;
+}
 
-      <div class="cd-card">
-        <div class="cd-card-head">
-          <div>
-            <div class="cd-card-heading">Zyra Spirits</div>
-            <div class="cd-card-subheading">courtney@drinkzyra.com</div>
-          </div>
-          <a class="cd-btn cd-btn-sm" href="https://webmail.dreamhost.com" target="_blank">Open Zyra Mail</a>
-        </div>
-        <div class="cd-empty-state">
-          <div class="cd-empty-title">Connect Zyra email via n8n IMAP</div>
-          n8n IMAP node → filter → POST to /data/zyra
-        </div>
-      </div>
+// ── Personal tab: Zyra ────────────────────────────────────
 
-      <div class="cd-card cd-full-width">
-        <div class="cd-card-head">
-          <div><div class="cd-card-heading">Family Calendar</div><div class="cd-card-subheading">${cal?.weekLabel || 'This week'} · All times MDT</div></div>
-          <a class="cd-btn cd-btn-sm" href="https://calendar.google.com" target="_blank">Open Calendar</a>
+function renderZyra(d) {
+  const zd = d?.zyra?.data;
+  const unread = zd?.unreadCount ?? '—';
+  const upd = d?.zyra?.updatedAt
+    ? `<span class="cd-last-updated">${relativeDate(d.zyra.updatedAt)}</span>`
+    : '';
+
+  const rows = zd ? (zd.filtered || []).slice(0, 8).map((m) => `
+    <tr>
+      <td class="cd-bold">${m.from}</td>
+      <td>${m.subject}</td>
+      <td class="cd-col-tag">${badge(m.tag, badgeVariant(m.tag))}</td>
+    </tr>`).join('') : null;
+
+  return `
+    <div class="cd-card-head">
+      <div>
+        <div class="cd-card-heading">
+          Zyra Spirits
+          ${zd ? `<span class="cd-unread-pill">${unread} unread</span>` : ''}
+          ${upd}
         </div>
-        ${calRows ? `<table class="cd-ctable cd-mt-16">
-          <thead><tr><th>Day</th><th class="cd-col-time">Time</th><th>Event</th><th>Location</th><th class="cd-col-tag">Tag</th></tr></thead>
-          <tbody>${calRows}</tbody>
-        </table>` : '<div class="cd-empty-state"><div class="cd-empty-title">Family calendar not connected</div>Connect Google Calendar via n8n.</div>'}
+        <div class="cd-card-subheading">courtney@drinkzyra.com</div>
       </div>
+      <a class="cd-btn cd-btn-sm" href="https://webmail.dreamhost.com" target="_blank">Open Zyra Mail</a>
+    </div>
+    <div class="cd-filter-pill">Business filter: hiding Uline catalogs + routine DHL charges</div>
+    ${rows
+      ? `<table class="cd-ctable cd-mt-16">
+          <thead><tr><th>From</th><th>Subject</th><th class="cd-col-tag">Tag</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`
+      : '<div class="cd-empty-state"><div class="cd-empty-title">Zyra IMAP not connected</div>n8n IMAP node (courtney@drinkzyra.com) → POST /data/zyra</div>'}`;
+}
+
+// ── Personal tab: Messages + WhatsApp ────────────────────
+
+function renderMessages(d) {
+  const md = d?.messages?.data;
+  return `
+    <div class="cd-card-head">
+      <div>
+        <div class="cd-card-heading">
+          Google Messages
+          ${md ? badge(`${md.unreadCount ?? 0}`, 'neutral') : ''}
+        </div>
+        <div class="cd-card-subheading">RCS/SMS · S25</div>
+      </div>
+      <a class="cd-btn cd-btn-sm" href="https://messages.google.com/web/conversations" target="_blank">Open Messages</a>
+    </div>
+    ${md ? `<table class="cd-ctable cd-mt-16">
+      <thead><tr><th>From</th><th>Message</th><th class="cd-col-date">Time</th></tr></thead>
+      <tbody>${(md.threads || []).slice(0, 6).map((t) => `
+        <tr><td class="cd-bold">${t.from}</td><td>${t.preview || ''}</td><td class="cd-col-date">${t.time || ''}</td></tr>`).join('')}
+      </tbody></table>`
+    : `<div class="cd-empty-state">
+        <div class="cd-empty-title">Google Messages not connected</div>
+        Requires browser extension bridge → POST /data/messages
+       </div>`}`;
+}
+
+function renderWhatsApp(d) {
+  const wd = d?.whatsapp?.data;
+  return `
+    <div class="cd-card-head">
+      <div>
+        <div class="cd-card-heading">
+          WhatsApp
+          ${wd ? badge(`${wd.unreadCount ?? 0}`, 'neutral') : ''}
+        </div>
+        <div class="cd-card-subheading">web.whatsapp.com · S25 linked</div>
+      </div>
+      <a class="cd-btn cd-btn-sm" href="https://web.whatsapp.com" target="_blank">Open WhatsApp</a>
+    </div>
+    ${wd ? `<table class="cd-ctable cd-mt-16">
+      <thead><tr><th>Contact / Group</th><th>Last Message</th><th class="cd-col-date">Time</th></tr></thead>
+      <tbody>${(wd.threads || []).slice(0, 6).map((t) => `
+        <tr><td class="cd-bold">${t.from}</td><td>${t.preview || ''}</td><td class="cd-col-date">${t.time || ''}</td></tr>`).join('')}
+      </tbody></table>`
+    : `<div class="cd-empty-state">
+        <div class="cd-empty-title">WhatsApp not connected</div>
+        Requires browser extension bridge → POST /data/whatsapp
+       </div>`}
+    <div class="cd-card-footer">
+      To mute TH.I.N.K YeG — open group in WhatsApp → group name → Mute notifications → Always
     </div>`;
 }
 
-function renderFiles(data) {
-  const d = data?.teams?.data;
-  const recordings = d?.recordings || [];
+// ── Personal tab: Family Calendar ────────────────────────
+
+function renderFamilyCalendar(d) {
+  const cal = d?.calendar?.data || d?.gcalendar?.data;
+  const personalEvents = cal ? (cal.events || []).filter((e) => e.isPersonal) : null;
+
+  if (!personalEvents?.length) {
+    return `
+      <div class="cd-card-head">
+        <div><div class="cd-card-heading">Family Calendar</div>
+        <div class="cd-card-subheading">${cal?.weekLabel || 'This week'} · All times MDT</div></div>
+        <a class="cd-btn cd-btn-sm" href="https://calendar.google.com" target="_blank">Open Calendar</a>
+      </div>
+      <div class="cd-empty-state">
+        <div class="cd-empty-title">Google Calendar not connected</div>
+        n8n Google Calendar node → POST /data/calendar
+      </div>`;
+  }
+
+  let lastDay = '';
+  const rows = personalEvents.map((ev) => {
+    let dayCell = '';
+    if (ev.day !== lastDay) {
+      lastDay = ev.day;
+      dayCell = `<td class="cd-bold">${ev.day}${ev.isToday ? ` <span class="cd-badge cd-badge-today">Today</span>` : ''}</td>`;
+    } else {
+      dayCell = '<td></td>';
+    }
+    return `<tr>
+      ${dayCell}
+      <td class="cd-col-time">${ev.time}</td>
+      <td>${ev.title}</td>
+      <td class="cd-muted">${ev.location || ''}</td>
+      <td class="cd-col-tag">${ev.tag ? badge(ev.tag, badgeVariant(ev.tag)) : ''}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="cd-card-head">
+      <div><div class="cd-card-heading">Family Calendar</div>
+      <div class="cd-card-subheading">${cal.weekLabel || 'This week'} · All times MDT · Edmonton</div></div>
+      <a class="cd-btn cd-btn-sm" href="https://calendar.google.com" target="_blank">Open Calendar</a>
+    </div>
+    <table class="cd-ctable cd-mt-16">
+      <thead><tr><th>Day</th><th class="cd-col-time">Time</th><th>Event</th><th>Location</th><th class="cd-col-tag">Tag</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Files & Recordings tab ────────────────────────────────
+
+function renderFiles(d) {
+  const td = d?.teams?.data;
+  const recordings = td?.recordings || [];
 
   const rows = recordings.map((r) => `
     <tr>
       <td class="cd-bold">${r.name}</td>
       <td>${r.organizer || ''}</td>
       <td class="cd-col-date">${r.date || ''}</td>
-      <td class="cd-col-tag">${chip('Teams', 'blue')}</td>
+      <td class="cd-col-tag">${badge('Teams', 'info')}</td>
     </tr>`).join('');
 
   return `
     <div class="cd-card">
       <div class="cd-card-head">
-        <div><div class="cd-card-heading">Team Recordings</div><div class="cd-card-subheading">Microsoft Teams</div></div>
+        <div><div class="cd-card-heading">Team Recordings</div>
+        <div class="cd-card-subheading">Microsoft Teams</div></div>
         <button class="cd-btn cd-btn-primary cd-btn-sm" data-refresh="recordings">Fetch Recordings</button>
       </div>
-      ${rows ? `<table class="cd-ctable cd-mt-16">
-        <thead><tr><th>Recording</th><th>Organizer</th><th class="cd-col-date">Date</th><th class="cd-col-tag">Source</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>` : '<p style="color:#9d9da1;font-size:13px;margin:6px 0 0">Recordings from your watched meetings will appear here after Power Automate syncs.</p>'}
+      ${rows
+        ? `<table class="cd-ctable cd-mt-16">
+            <thead><tr><th>Recording</th><th>Organizer</th><th class="cd-col-date">Date</th><th class="cd-col-tag">Source</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>`
+        : '<p style="color:var(--s-gray-500);font-size:12px;margin:8px 0 0">Recordings sync via Power Automate after each watched meeting ends.</p>'}
     </div>
     <div class="cd-card cd-mt-24">
       <div class="cd-card-head">
-        <div><div class="cd-card-heading">SharePoint</div><div class="cd-card-subheading">adobe.sharepoint.com</div></div>
+        <div><div class="cd-card-heading">SharePoint</div>
+        <div class="cd-card-subheading">adobe.sharepoint.com</div></div>
         <a class="cd-btn cd-btn-sm" href="https://adobe.sharepoint.com" target="_blank">Open SharePoint</a>
       </div>
-      <p style="color:#9d9da1;font-size:13px;margin:8px 0 0">Access shared documents and team sites.</p>
+      <p style="color:var(--s-gray-500);font-size:12px;margin:8px 0 0">Access shared documents and team sites.</p>
     </div>`;
 }
 
-// ── Assistant ─────────────────────────────────────────────────
+// ── Assistant panel ───────────────────────────────────────
 
 function buildAssistant(data) {
   const panel = el('div', 'cd-assistant-panel');
   panel.hidden = true;
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', "Court's Co-worker");
   panel.innerHTML = `
     <div class="cd-assistant-header">
-      <svg viewBox="0 0 133.46 118.11" width="18" height="16" style="flex-shrink:0" aria-hidden="true">
+      <svg viewBox="0 0 133.46 118.11" width="18" height="16" aria-hidden="true" focusable="false">
         <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
         <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
         <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
@@ -404,23 +532,21 @@ function buildAssistant(data) {
         <div class="cd-assistant-title">Court's Co-worker</div>
         <div class="cd-assistant-subtitle">Powered by Claude · knows your context</div>
       </div>
-      <button class="cd-assistant-close" aria-label="Close">×</button>
+      <button class="cd-assistant-close" aria-label="Close assistant">×</button>
     </div>
-    <div class="cd-assistant-messages">
+    <div class="cd-assistant-messages" role="log" aria-live="polite">
       <div class="cd-msg-assistant cd-msg-suggestions">
         <strong>Hi Courtney! Connected to Slack, Teams, Outlook, Gmail, Zyra, and your calendars. Try:</strong>
         · "What's my day Monday?" · "Any urgent Zyra emails?" · "Theo's games this week?" · "Book with Jake Tuesday 2pm"
       </div>
     </div>
     <div class="cd-assistant-input-area">
-      <input type="text" class="cd-assistant-input" placeholder="Ask anything about your day..."/>
-      <button class="cd-assistant-send">Send</button>
+      <input type="text" class="cd-assistant-input" placeholder="Ask anything about your day…" aria-label="Ask your assistant"/>
+      <button class="cd-assistant-send" aria-label="Send message">Send</button>
     </div>`;
 
-  // Close
   panel.querySelector('.cd-assistant-close').addEventListener('click', () => { panel.hidden = true; });
 
-  // Chat
   const messages = panel.querySelector('.cd-assistant-messages');
   const input = panel.querySelector('.cd-assistant-input');
   const sendBtn = panel.querySelector('.cd-assistant-send');
@@ -435,30 +561,37 @@ function buildAssistant(data) {
   }
 
   function reply(text) {
-    const lower = text.toLowerCase();
     const typing = addMsg('Thinking…', 'assistant');
     typing.classList.add('cd-msg-typing');
     setTimeout(() => {
       typing.remove();
       let r;
-      if (/monday|what.*day|my day|tomorrow|schedule/i.test(lower)) {
-        const events = data?.outlook?.data?.calendar?.events?.filter((e) => e.day?.includes('Monday')) || [];
+      if (/monday|what.*day|my day|tomorrow|schedule/i.test(text)) {
+        const events = data?.outlook?.data?.calendar?.events?.filter((e) => /monday/i.test(e.day)) || [];
         r = events.length
           ? `Monday:\n${events.map((e) => `• ${e.time} — ${e.title}`).join('\n')}`
-          : 'No calendar data yet. Set up Power Automate to see your day.';
-      } else if (/urgent|important|action/i.test(lower)) {
+          : 'No calendar data yet — set up Power Automate to see your schedule.';
+      } else if (/urgent|flagged|action/i.test(text)) {
         const flagged = data?.outlook?.data?.flagged || [];
         r = flagged.length
           ? `Flagged:\n${flagged.map((f) => `• ${f.subject}`).join('\n')}`
-          : 'No flagged items in Outlook. Everything looks clear.';
-      } else if (/teams|slack.*unread|unread.*slack/i.test(lower)) {
-        const sc = data?.slack?.data?.unreadCount;
-        r = sc ? `Slack: ${sc} unread messages` : 'Slack data not yet connected.';
+          : 'No flagged items in Outlook.';
+      } else if (/zyra|spirits/i.test(text)) {
+        const items = data?.zyra?.data?.filtered || [];
+        r = items.length
+          ? `Zyra inbox:\n${items.slice(0, 5).map((i) => `• ${i.from}: ${i.subject}`).join('\n')}`
+          : 'Zyra inbox not connected yet.';
+      } else if (/theo|soccer|football|game/i.test(text)) {
+        const events = (data?.calendar?.data?.events || data?.gcalendar?.data?.events || [])
+          .filter((e) => /theo|soccer|football|raiders|btb/i.test(e.title));
+        r = events.length
+          ? `Theo's events this week:\n${events.map((e) => `• ${e.day} ${e.time} — ${e.title}`).join('\n')}`
+          : 'No Theo events found — connect Google Calendar via n8n.';
       } else {
-        r = 'I can see your connected inboxes, Teams, and calendars. Ask about specific channels, people, meetings, or say "book…" to draft an invite. (Full AI replies available once Claude API key is wired up in the worker.)';
+        r = 'I can see your connected inboxes, Teams, and calendars. Ask about specific channels, people, meetings, or say "book…" to draft an invite. Full AI context replies available once Claude API is wired up in the worker.';
       }
       addMsg(r, 'assistant');
-    }, 600);
+    }, 500);
   }
 
   function send() {
@@ -470,148 +603,187 @@ function buildAssistant(data) {
   }
 
   sendBtn.addEventListener('click', send);
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
 
   return panel;
 }
 
-// ── Main block decorator ──────────────────────────────────────
+// ── Render all tabs ───────────────────────────────────────
+
+function renderAll(block, panels, data) {
+  const d = data || {};
+
+  // Work
+  panels.work.innerHTML = `
+    <div class="cd-grid-2 cd-work-top-grid">
+      <div class="cd-card">${renderSlack(d)}</div>
+      <div class="cd-card">${renderTeams(d)}</div>
+    </div>
+    <div class="cd-card cd-mt-24">${renderOutlook(d)}</div>`;
+
+  // Meetings
+  panels.meetings.innerHTML = `<div class="cd-card">${renderMeetings(d)}</div>`;
+
+  // Personal
+  panels.personal.innerHTML = `
+    <div class="cd-grid-2 cd-personal-grid">
+      <div class="cd-card">${renderGmail(d)}</div>
+      <div class="cd-card">${renderZyra(d)}</div>
+      <div class="cd-card">${renderMessages(d)}</div>
+      <div class="cd-card">${renderWhatsApp(d)}</div>
+      <div class="cd-card cd-full-width">${renderFamilyCalendar(d)}</div>
+    </div>`;
+
+  // Files
+  panels.files.innerHTML = renderFiles(d);
+
+  // Unread total badge in topbar
+  const outlookUnread = d.outlook?.data?.unreadCount ?? 0;
+  const slackUnread = d.slack?.data?.unreadCount ?? 0;
+  const gmailUnread = d.gmail?.data?.unreadCount ?? 0;
+  const zyraUnread = d.zyra?.data?.unreadCount ?? 0;
+  const total = outlookUnread + slackUnread + gmailUnread + zyraUnread;
+  const badge$ = block.querySelector('.cd-unread-total');
+  if (badge$ && total > 0) badge$.textContent = total.toLocaleString();
+
+  // Refresh button handlers
+  block.querySelectorAll('[data-refresh]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const orig = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Refreshing…';
+      fetchData(btn.closest('[data-worker-url]')?.dataset.workerUrl || '')
+        .then((fresh) => { if (fresh) renderAll(block, panels, fresh); })
+        .finally(() => { btn.disabled = false; btn.textContent = orig; });
+    });
+  });
+
+  // Recordings nav shortcut
+  block.querySelectorAll('[data-recordings]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      block.querySelectorAll('.cd-tab-btn').forEach((b) => b.classList.remove('active'));
+      block.querySelectorAll('.cd-tab-panel').forEach((p) => p.classList.remove('active'));
+      block.querySelector('#cd-tab-files')?.classList.add('active');
+      panels.files.classList.add('active');
+    });
+  });
+}
+
+// ── Main decorator ────────────────────────────────────────
 
 export default async function decorate(block) {
-  // Read worker URL from block content (first cell)
   const workerUrl = (block.querySelector('td, p')?.textContent || '').trim()
     || 'https://comms-data.remekie.workers.dev';
   block.textContent = '';
+  block.dataset.workerUrl = workerUrl;
 
-  // ── Top bar
+  // Top bar
   const topbar = el('div', 'cd-topbar');
   topbar.innerHTML = `
-    <svg viewBox="0 0 133.46 118.11" width="28" height="24" aria-label="Adobe">
+    <svg viewBox="0 0 133.46 118.11" width="24" height="20" aria-label="Adobe" role="img">
       <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
       <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
       <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
     </svg>
-    <div class="cd-topbar-sep"></div>
+    <div class="cd-topbar-sep" aria-hidden="true"></div>
     <div>
       <div class="cd-topbar-title">Comms Dashboard</div>
-      <div class="cd-topbar-sub">Courtney Remekie · Adobe Solutions Consultant · MDT
-        <span class="cd-live-indicator"><span class="cd-live-dot"></span> Live · 60s</span>
+      <div class="cd-topbar-sub">
+        Courtney Remekie · Adobe Solutions Consultant · MDT
+        <span class="cd-live-indicator" aria-live="polite">
+          <span class="cd-live-dot" aria-hidden="true"></span> Live · 60s
+        </span>
       </div>
     </div>
     <div class="cd-topbar-right">
-      <span class="cd-badge-negative cd-unread-total">—</span>
+      <span class="cd-unread-pill cd-unread-total" aria-label="Total unread messages">—</span>
       <span class="cd-unread-label">unread across all inboxes</span>
     </div>`;
   block.appendChild(topbar);
 
-  // ── Tab bar
-  const tabs = ['work', 'meetings', 'personal', 'files'];
-  const tabLabels = { work: 'Work', meetings: 'Meetings', personal: 'Personal', files: 'Files & Recordings' };
+  // Tab bar
+  const TABS = [
+    { id: 'work',     label: 'Work' },
+    { id: 'meetings', label: 'Meetings' },
+    { id: 'personal', label: 'Personal' },
+    { id: 'files',    label: 'Files & Recordings' },
+  ];
   const tabBar = el('div', 'cd-tab-bar');
-  tabs.forEach((t, i) => {
+  tabBar.setAttribute('role', 'tablist');
+  TABS.forEach(({ id, label }, i) => {
     const btn = el('button', `cd-tab-btn${i === 0 ? ' active' : ''}`);
-    btn.id = `cd-tab-${t}`;
-    btn.textContent = tabLabels[t];
+    btn.id = `cd-tab-${id}`;
+    btn.textContent = label;
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', i === 0 ? 'true' : 'false');
+    btn.setAttribute('aria-controls', `cd-panel-${id}`);
     btn.addEventListener('click', () => {
-      block.querySelectorAll('.cd-tab-btn').forEach((b) => b.classList.remove('active'));
+      block.querySelectorAll('.cd-tab-btn').forEach((b) => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+      });
       block.querySelectorAll('.cd-tab-panel').forEach((p) => p.classList.remove('active'));
       btn.classList.add('active');
-      block.querySelector(`#cd-panel-${t}`)?.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      block.querySelector(`#cd-panel-${id}`)?.classList.add('active');
     });
     tabBar.appendChild(btn);
   });
   block.appendChild(tabBar);
 
-  // ── Panels
+  // Panels
   const panels = {};
-  tabs.forEach((t, i) => {
+  TABS.forEach(({ id }, i) => {
     const panel = el('div', `cd-tab-panel${i === 0 ? ' active' : ''}`);
-    panel.id = `cd-panel-${t}`;
+    panel.id = `cd-panel-${id}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', `cd-tab-${id}`);
     panel.innerHTML = '<div class="cd-loading">Loading…</div>';
-    panels[t] = panel;
+    panels[id] = panel;
     block.appendChild(panel);
   });
 
-  // ── Assistant FAB + panel
+  // Assistant FAB
   const fab = el('div', 'cd-assistant-fab');
-  fab.innerHTML = `<button id="cd-assistant-toggle">
-    <svg viewBox="0 0 133.46 118.11" width="18" height="16" aria-hidden="true">
-      <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
-      <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
-      <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
-    </svg>
-    Ask Court's Co-worker
-  </button>`;
+  fab.innerHTML = `
+    <button id="cd-assistant-toggle" aria-label="Open Court's Co-worker assistant" aria-haspopup="dialog">
+      <svg viewBox="0 0 133.46 118.11" width="16" height="14" aria-hidden="true" focusable="false">
+        <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
+        <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
+        <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
+      </svg>
+      Ask Court's Co-worker
+    </button>`;
   block.appendChild(fab);
 
-  let assistantPanel = null;
-
-  // ── Render function
-  function renderAll(data) {
-    const d = data || {};
-
-    // Work tab
-    panels.work.innerHTML = `
-      <div class="cd-grid-2 cd-work-top-grid">
-        <div class="cd-card">${renderSlack(d)}</div>
-        <div class="cd-card">${renderTeams(d)}</div>
-      </div>
-      <div class="cd-card cd-mt-24">${renderOutlook(d)}</div>`;
-
-    // Meetings tab
-    panels.meetings.innerHTML = `<div class="cd-card">${renderMeetings(d)}</div>`;
-
-    // Personal tab
-    panels.personal.innerHTML = renderPersonal(d);
-
-    // Files tab
-    panels.files.innerHTML = renderFiles(d);
-
-    // Unread total badge
-    const outlookUnread = d.outlook?.data?.unreadCount ?? 0;
-    const slackUnread = d.slack?.data?.unreadCount ?? 0;
-    const total = outlookUnread + slackUnread;
-    const badge = block.querySelector('.cd-unread-total');
-    if (badge && total > 0) badge.textContent = total.toLocaleString();
-
-    // Re-attach refresh handlers
-    block.querySelectorAll('[data-refresh]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const lbl = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = 'Refreshing…';
-        fetchData(workerUrl).then((fresh) => {
-          if (fresh) renderAll(fresh);
-          btn.disabled = false;
-          btn.textContent = lbl;
-        });
-      });
-    });
-
-    // Assistant rebuild with fresh data
-    if (assistantPanel) assistantPanel.remove();
-    assistantPanel = buildAssistant(d);
-    block.appendChild(assistantPanel);
-    fab.querySelector('button').onclick = () => { assistantPanel.hidden = !assistantPanel.hidden; };
-
-    // Recordings nav
-    block.querySelectorAll('[data-recordings]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        block.querySelectorAll('.cd-tab-btn').forEach((b) => b.classList.remove('active'));
-        block.querySelectorAll('.cd-tab-panel').forEach((p) => p.classList.remove('active'));
-        block.querySelector('#cd-tab-files')?.classList.add('active');
-        panels.files.classList.add('active');
-      });
-    });
-  }
-
-  // ── Initial load
+  // Initial load + render
   const data = await fetchData(workerUrl);
-  renderAll(data);
+  renderAll(block, panels, data);
 
-  // ── Polling
+  // Build assistant with initial data
+  let assistantPanel = buildAssistant(data || {});
+  block.appendChild(assistantPanel);
+
+  fab.querySelector('button').addEventListener('click', () => {
+    assistantPanel.hidden = !assistantPanel.hidden;
+  });
+
+  // Close assistant on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !assistantPanel.hidden) assistantPanel.hidden = true;
+  });
+
+  // Poll every 60s
   setInterval(async () => {
     const fresh = await fetchData(workerUrl);
-    if (fresh) renderAll(fresh);
+    if (fresh) {
+      renderAll(block, panels, fresh);
+      assistantPanel.remove();
+      assistantPanel = buildAssistant(fresh);
+      block.appendChild(assistantPanel);
+      fab.querySelector('button').onclick = () => { assistantPanel.hidden = !assistantPanel.hidden; };
+    }
   }, POLL_INTERVAL);
 }
