@@ -25,7 +25,20 @@ body:has(.comms-dashboard) main {
   flex-direction: column;
 }
 
+/* EDS section wrapper: main > div */
 body:has(.comms-dashboard) main > div {
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* EDS block wrapper: main > div > div (comms-dashboard-wrapper) */
+body:has(.comms-dashboard) main > div > div {
   max-width: 100% !important;
   padding: 0 !important;
   margin: 0 !important;
@@ -195,11 +208,15 @@ body:has(.comms-dashboard) main > div {
   display: none;
   padding: var(--s-24);
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
 }
-.cd-tab-panel.active { display: block; }
+.cd-tab-panel.active {
+  display: flex;
+  flex-direction: column;
+}
 
 /* ── Grids ───────────────────────────────────────────────── */
 .cd-grid-2 {
