@@ -8,7 +8,7 @@ A scheduled flow that runs every 15 minutes:
 1. Reads your Outlook inbox (unread count, flagged, meetings)
 2. Reads your Outlook calendar (this week's events)
 3. Reads Teams channel posts for watched teams
-4. POSTs all of it to the Cloudflare Worker at `https://comms-data.remekie.workers.dev/data`
+4. POSTs all of it to the Cloudflare Worker at `https://comms-data.compass-xsc.workers.dev/data`
 
 ---
 
@@ -72,7 +72,7 @@ Paste this expression as the Inputs:
 Add action: **HTTP**
 
 - Method: `POST`
-- URI: `https://comms-data.remekie.workers.dev/data/outlook`
+- URI: `https://comms-data.compass-xsc.workers.dev/data/outlook`
 - Headers:
   - `Authorization`: `Bearer YOUR_WRITE_TOKEN_HERE`
   - `Content-Type`: `application/json`
@@ -97,7 +97,7 @@ Then add another HTTP action posting to `/data/teams`.
 ## Testing
 
 1. Click **Save**, then **Run manually**
-2. Check `https://comms-data.remekie.workers.dev/data` to see the stored payload
+2. Check `https://comms-data.compass-xsc.workers.dev/data` to see the stored payload
 3. Reload the dashboard — data should appear live
 
 ---

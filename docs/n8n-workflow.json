@@ -169,7 +169,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "parameters": {
         "method": "POST",
-        "url": "https://comms-data.remekie.workers.dev/data",
+        "url": "https://comms-data.compass-xsc.workers.dev/data",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

@@ -5,7 +5,7 @@
  * communication sources across 4 tabs with 60s polling.
  *
  * Block authoring: single table cell containing the Worker URL.
- * Worker URL default: https://comms-data.remekie.workers.dev
+ * Worker URL default: https://comms-data.compass-xsc.workers.dev
  */
 
 const POLL_INTERVAL = 60_000;
@@ -675,7 +675,7 @@ function renderAll(block, panels, data) {
 
 export default async function decorate(block) {
   const workerUrl = (block.querySelector('td, p')?.textContent || '').trim()
-    || 'https://comms-data.remekie.workers.dev';
+    || 'https://comms-data.compass-xsc.workers.dev';
   block.textContent = '';
   block.dataset.workerUrl = workerUrl;
 
