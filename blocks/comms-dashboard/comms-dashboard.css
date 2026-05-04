@@ -1,5 +1,41 @@
 /* ── Comms Dashboard — Adobe Spectrum 2 ─────────────────── */
 
+/* ── Full-viewport takeover ──────────────────────────────── */
+/* Dashboards are full-screen apps — strip EDS chrome and containers */
+body:has(.comms-dashboard) {
+  overflow: hidden;
+  height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+body:has(.comms-dashboard) header,
+body:has(.comms-dashboard) footer {
+  display: none !important;
+}
+
+body:has(.comms-dashboard) main {
+  padding: 0 !important;
+  margin: 0 !important;
+  max-width: 100% !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+body:has(.comms-dashboard) main > div {
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* Spectrum 2 tokens */
 .comms-dashboard {
   /* Palette */
@@ -59,9 +95,14 @@
 
   font-family: var(--s-font);
   background: var(--s-gray-50);
-  min-height: 100vh;
   color: var(--s-gray-800);
   -webkit-font-smoothing: antialiased;
+  /* Full-screen layout */
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
 }
 
 /* ── Top bar ─────────────────────────────────────────────── */
@@ -150,7 +191,14 @@
 }
 
 /* ── Panels ──────────────────────────────────────────────── */
-.cd-tab-panel { display: none; padding: var(--s-24); }
+.cd-tab-panel {
+  display: none;
+  padding: var(--s-24);
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
 .cd-tab-panel.active { display: block; }
 
 /* ── Grids ───────────────────────────────────────────────── */
