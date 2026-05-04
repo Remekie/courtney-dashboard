@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+  <title>Comms Dashboard — Courtney Remekie</title>
+  <link rel="stylesheet" href="https://use.typekit.net/cwm0xxe.css"/>
+  <style>
+    :root {
+      --page-bg: #f8f8fa;
+      --card-radius: 12px;
+      --grid-gap: 24px;
+      --font: 'Adobe Clean', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--page-bg); font-family: var(--font); }
+    header, footer { display: none !important; }
+
+    /* Top bar */
+    .topbar {
+      background: #1b1b1b; padding: 10px 24px; display: flex;
+      align-items: center; gap: 14px; position: sticky; top: 0; z-index: 200;
+    }
+    .topbar-title { color: #fff; font-weight: 700; font-size: 16px; font-family: var(--font); line-height: 1.2; }
+    .topbar-sub { color: rgba(255,255,255,.55); font-size: 11px; font-family: var(--font); }
+    .topbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .topbar-right .unread-label { color: rgba(255,255,255,.45); font-size: 11px; }
+    .topbar-sep { width: 1px; height: 22px; background: rgba(255,255,255,.15); flex-shrink: 0; }
+
+    /* Layout */
+    .page { max-width: 1440px; margin: 0 auto; }
+
+    /* Tab bar */
+    .tab-bar {
+      display: flex; border-bottom: 2px solid #e5e7eb; background: #fff;
+      position: sticky; top: 42px; z-index: 150;
+      overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      padding: 12px 20px; border: none; border-bottom: 2px solid transparent;
+      margin-bottom: -2px; background: none; cursor: pointer;
+      font-size: 14px; font-weight: 400; color: #6b7280;
+      white-space: nowrap; font-family: inherit; transition: color .15s, border-color .15s;
+    }
+    .tab-btn:hover { color: #374151; }
+    .tab-btn.active { color: #2680eb; border-bottom-color: #2680eb; font-weight: 600; }
+
+    /* Tab panels */
+    .tab-panel { display: none; padding: 24px; }
+    .tab-panel.active { display: block; }
+
+    /* Grid layouts */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--grid-gap); }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .full-width { grid-column: 1 / -1; }
+    @media (max-width: 960px) { .grid-2, .grid-3 { grid-template-columns: 1fr !important; } }
+
+    /* Cards */
+    .card {
+      background: #fff; border: 1px solid #e4e4e8; border-radius: var(--card-radius);
+      padding: 20px 22px; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 2px; }
+    .card-heading { font-size: 15px; font-weight: 700; color: #1b1b1f; margin: 0; line-height: 1.3; }
+    .card-subheading { font-size: 11px; color: #9d9da1; margin: 1px 0 0; }
+
+    /* Sections inside cards */
+    .section-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: #9d9da1; margin: 18px 0 8px; display: block;
+    }
+    .section-label:first-child { margin-top: 12px; }
+
+    /* Compact table */
+    .ctable { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.4; }
+    .ctable th {
+      text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .05em; color: #9d9da1; padding: 0 6px 6px 0; border-bottom: 1px solid #e4e4e8;
+    }
+    .ctable td {
+      padding: 7px 6px 7px 0; border-bottom: 1px solid #f0f0f3; vertical-align: top; color: #1b1b1f;
+    }
+    .ctable tr:last-child td { border-bottom: none; }
+    .ctable tr:hover td { background: #fafafc; }
+    .ctable .col-date { white-space: nowrap; color: #9d9da1; font-size: 11px; width: 80px; }
+    .ctable .col-tag { width: 90px; text-align: right; }
+    .ctable .col-narrow { width: 100px; }
+    .ctable .col-time { width: 100px; white-space: nowrap; font-weight: 600; color: #6e6e73; font-variant-numeric: tabular-nums; }
+    .ctable .col-cadence { width: 90px; white-space: nowrap; color: #9d9da1; font-size: 11px; }
+    .ctable .col-action { width: 80px; text-align: right; }
+    .ctable .muted { color: #9d9da1; }
+    .ctable .bold { font-weight: 600; }
+
+    /* Day header rows */
+    .day-header td {
+      font-weight: 700 !important; font-size: 13px !important; color: #1b1b1f !important;
+      padding-top: 14px !important; border-bottom: 2px solid #1473e6 !important;
+      background: none !important;
+    }
+
+    /* Badge pills */
+    .chip {
+      display: inline-block; padding: 1px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; line-height: 1.7; white-space: nowrap;
+    }
+    .chip-blue   { background: #dbeafe; color: #1e40af; }
+    .chip-orange { background: #ffedd5; color: #9a3412; }
+    .chip-green  { background: #dcfce7; color: #166534; }
+    .chip-purple { background: #ede9fe; color: #6d28d9; }
+    .chip-gray   { background: #f1f5f9; color: #64748b; }
+    .chip-red    { background: #fee2e2; color: #b91c1c; }
+    .chip-teal   { background: #ccfbf1; color: #0f766e; }
+    .chip-amber  { background: #fef3c7; color: #92400e; }
+
+    /* Inline badge (for topbar unread count) */
+    .badge-negative {
+      display: inline-block; padding: 2px 8px; border-radius: 10px;
+      font-size: 11px; font-weight: 700; background: #b91c1c; color: #fff;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 14px; border-radius: 6px; border: 1px solid #d4d4d8;
+      background: #fff; color: #1b1b1f; cursor: pointer;
+      font-family: var(--font); font-size: 12px; font-weight: 500;
+      transition: background .12s, border-color .12s;
+      text-decoration: none; white-space: nowrap;
+    }
+    .btn:hover { background: #f5f5f7; border-color: #b4b4ba; }
+    .btn-primary { background: #1473e6; color: #fff; border-color: #1473e6; }
+    .btn-primary:hover { background: #0d66d0; border-color: #0d66d0; }
+    .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+    /* People chips */
+    .people-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .person-chip {
+      display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 4px;
+      background: #f0f0f4; border-radius: 16px; font-size: 11px; font-weight: 500; color: #1b1b1f;
+    }
+    .person-chip .av {
+      width: 18px; height: 18px; border-radius: 50%; background: #dbeafe; color: #1e40af;
+      display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700;
+    }
+
+    /* Filter label */
+    .filter-note {
+      font-size: 11px; color: #9d9da1; margin-top: 6px; font-style: italic;
+    }
+    .filter-pill {
+      display: inline-block; font-size: 10px; font-weight: 600; color: #6e6e73;
+      background: #eaeaef; padding: 2px 8px; border-radius: 10px; margin-top: 6px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center; padding: 24px 16px; color: #9d9da1; font-size: 13px;
+    }
+    .empty-state .empty-title { font-weight: 600; color: #6e6e73; margin-bottom: 4px; }
+
+    /* Action row */
+    .action-row { margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .action-row-right { margin-top: 14px; display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+
+    /* Card footer note */
+    .card-footer {
+      margin-top: 12px; padding-top: 10px; border-top: 1px solid #f0f0f3;
+      font-size: 11px; color: #9d9da1;
+    }
+    .card-footer a { color: #1473e6; font-weight: 600; text-decoration: none; }
+    .card-footer a:hover { text-decoration: underline; }
+
+    /* ── Assistant Panel ─────────────────────────────────── */
+    #assistant-fab {
+      position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+    }
+    #assistant-fab button {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 18px; border-radius: 24px;
+      background: #1b1b1b; color: #fff; border: none;
+      font-family: var(--font); font-size: 13px; font-weight: 600;
+      cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.22);
+      transition: background .15s, box-shadow .15s, transform .15s;
+    }
+    #assistant-fab button:hover {
+      background: #2a2a2e; box-shadow: 0 6px 24px rgba(0,0,0,.28);
+      transform: translateY(-1px);
+    }
+    #assistant-fab svg { flex-shrink: 0; }
+
+    #assistant-panel {
+      position: fixed; bottom: 80px; right: 24px; width: 420px; z-index: 999;
+      display: flex; flex-direction: column; height: 520px;
+      background: #fff; border: 1px solid #d4d4d8; border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,.18); overflow: hidden;
+      transition: opacity .2s, transform .2s;
+    }
+    #assistant-panel[hidden] { display: none; }
+    #assistant-panel .panel-header {
+      background: #1b1b1b; padding: 12px 16px; display: flex;
+      align-items: center; gap: 10px; flex-shrink: 0;
+    }
+    #assistant-panel .panel-header .title { color: #fff; font-weight: 600; font-size: 13px; }
+    #assistant-panel .panel-header .subtitle { color: rgba(255,255,255,.5); font-size: 11px; }
+    #assistant-panel .panel-header .close-btn {
+      background: none; border: none; color: rgba(255,255,255,.6); cursor: pointer;
+      font-size: 16px; padding: 4px 8px; border-radius: 4px; line-height: 1;
+    }
+    #assistant-panel .panel-header .close-btn:hover { color: #fff; background: rgba(255,255,255,.1); }
+
+    #assistant-messages {
+      flex: 1; overflow-y: auto; padding: 14px 16px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .msg-assistant {
+      background: #f0f0f4; border-radius: 10px 10px 10px 2px;
+      padding: 10px 13px; font-size: 13px; line-height: 1.5;
+      max-width: 90%; white-space: pre-wrap; color: #1b1b1f;
+    }
+    .msg-user {
+      background: #1473e6; color: #fff; border-radius: 10px 10px 2px 10px;
+      padding: 10px 13px; font-size: 13px; line-height: 1.5;
+      max-width: 85%; align-self: flex-end; margin-left: auto;
+    }
+    .msg-typing { opacity: .5; }
+    .msg-suggestions {
+      font-size: 12px; color: #6e6e73; line-height: 1.7;
+    }
+    .msg-suggestions strong { color: #1b1b1f; display: block; margin-bottom: 2px; }
+
+    #assistant-input-area {
+      padding: 10px 12px; border-top: 1px solid #e4e4e8;
+      display: flex; gap: 8px; flex-shrink: 0; align-items: center;
+    }
+    #assistant-input {
+      flex: 1; padding: 8px 12px; border: 1px solid #d4d4d8; border-radius: 8px;
+      font-size: 13px; font-family: var(--font); color: #1b1b1f;
+      background: #fafafc; outline: none; resize: none; line-height: 1.4;
+    }
+    #assistant-input:focus { border-color: #1473e6; box-shadow: 0 0 0 2px rgba(20,115,230,.15); }
+    #assistant-input::placeholder { color: #b0b0b6; }
+    #assistant-send {
+      padding: 8px 16px; border-radius: 8px; border: none;
+      background: #1473e6; color: #fff; font-family: var(--font);
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .15s;
+    }
+    #assistant-send:hover { background: #0d66d0; }
+
+    /* Booking confirmation card */
+    .msg-booking-card {
+      background: #f8f9fc; border: 1px solid #2680eb; border-radius: 10px;
+      padding: 14px 16px; font-size: 13px; max-width: 95%;
+    }
+    .booking-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .05em; color: #2680eb; margin-bottom: 6px;
+    }
+    .booking-subject { font-weight: 700; color: #1b1b1f; margin-bottom: 4px; }
+    .booking-meta { color: #6e6e73; margin-bottom: 2px; font-size: 12px; }
+    .booking-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .booking-confirm {
+      background: #2680eb; color: #fff; border: none; border-radius: 16px;
+      padding: 6px 18px; cursor: pointer; font-size: 12px; font-weight: 600;
+      font-family: var(--font); transition: background .15s;
+    }
+    .booking-confirm:hover { background: #1473e6; }
+    .booking-cancel {
+      background: transparent; border: 1px solid #d4d4d8; border-radius: 16px;
+      padding: 6px 18px; cursor: pointer; font-size: 12px; font-weight: 500;
+      font-family: var(--font); color: #6e6e73; transition: background .15s;
+    }
+    .booking-cancel:hover { background: #f0f0f4; }
+    .booking-sent { color: #2680eb; font-weight: 600; font-size: 12px; }
+
+    /* ── Live indicator ────────────────────────────────── */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .live-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #22c55e; animation: pulse 2s infinite;
+      display: inline-block;
+    }
+    .last-updated {
+      font-size: 10px; color: #9d9da1; margin-left: 8px; font-weight: 400;
+    }
+
+    /* Today chip */
+    .chip-today {
+      display: inline-block; padding: 1px 8px; border-radius: 10px;
+      font-size: 10px; font-weight: 700; line-height: 1.7; white-space: nowrap;
+      background: #1473e6; color: #fff; margin-left: 6px;
+    }
+
+    /* ── Mobile responsive ─────────────────────────────── */
+    @media (max-width: 768px) {
+      .topbar { padding: 8px 14px !important; gap: 10px !important; }
+      .topbar-sub { display: none !important; }
+      .topbar-title { font-size: 14px !important; }
+      .topbar-right .unread-label { display: none !important; }
+
+      .tab-bar {
+        top: 36px !important;
+        overflow-x: auto !important; -webkit-overflow-scrolling: touch !important;
+        white-space: nowrap !important; scrollbar-width: none !important;
+      }
+      .tab-bar::-webkit-scrollbar { display: none !important; }
+
+      .work-top-grid { grid-template-columns: 1fr !important; }
+      .outlook-swimlanes { grid-template-columns: 1fr !important; }
+      .personal-grid { grid-template-columns: 1fr !important; }
+      .grid-2 { grid-template-columns: 1fr !important; }
+      .grid-3 { grid-template-columns: 1fr !important; }
+
+      .tab-panel.active { padding: 12px !important; }
+
+      .card { padding: 16px 14px !important; margin-bottom: 12px !important; }
+      .people-wrap { gap: 6px !important; }
+      .ctable { font-size: 11px !important; }
+      .ctable .col-cadence { display: none !important; }
+      /* Hide organizer column on mobile meetings */
+      #panel-meetings .ctable td:nth-child(3),
+      #panel-meetings .ctable th:nth-child(3) { display: none !important; }
+
+      .card { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+
+      #assistant-fab { bottom: 16px !important; right: 16px !important; }
+      #assistant-fab button { padding: 8px 14px !important; font-size: 12px !important; }
+
+      #assistant-panel {
+        bottom: 0 !important; right: 0 !important; left: 0 !important;
+        width: 100% !important; height: 70vh !important;
+        border-radius: 16px 16px 0 0 !important;
+        border-left: none !important; border-right: none !important;
+        border-bottom: none !important;
+      }
+    }
+
+    /* Tablet */
+    @media (max-width: 1024px) and (min-width: 769px) {
+      .work-top-grid { grid-template-columns: 1fr 1fr !important; }
+      .outlook-swimlanes { grid-template-columns: 1fr 1fr !important; }
+    }
+
+    /* Touch-friendly */
+    @media (hover: none) and (pointer: coarse) {
+      button, a { min-height: 36px; }
+      #assistant-input { font-size: 16px !important; }
+    }
+
+    /* Helpers */
+    .mt-0 { margin-top: 0; }
+    .mt-16 { margin-top: 16px; }
+    .mt-24 { margin-top: 24px; }
+    .mb-0 { margin-bottom: 0; }
+    .gap-24 { gap: 24px; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- TOP BAR                                                   -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="topbar">
+  <svg viewBox="0 0 133.46 118.11" width="28" height="24" aria-label="Adobe">
+    <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
+    <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
+    <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
+  </svg>
+  <div class="topbar-sep"></div>
+  <div>
+    <div class="topbar-title">Comms Dashboard</div>
+    <div class="topbar-sub">Courtney Remekie &middot; Adobe Solutions Consultant &middot; MDT
+      <span id="live-indicator" style="display:inline-flex;align-items:center;gap:4px;margin-left:8px">
+        <span class="live-dot"></span> Live &middot; 60s
+      </span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span class="badge-negative">4,519</span>
+    <span class="unread-label">unread across all inboxes</span>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- MAIN CONTENT                                              -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="page">
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-work" onclick="switchTab('work')">Work</button>
+  <button class="tab-btn" id="tab-meetings" onclick="switchTab('meetings')">Meetings</button>
+  <button class="tab-btn" id="tab-personal" onclick="switchTab('personal')">Personal</button>
+  <button class="tab-btn" id="tab-files" onclick="switchTab('files')">Files &amp; Recordings</button>
+</div>
+<div class="page-panels">
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- TAB 1: WORK                                             -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div class="tab-panel active" id="panel-work">
+    <div class="grid-2 work-top-grid">
+      <!-- ── SLACK ────────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-head">
+          <div><div class="card-heading">Slack <span id="slack-unread-badge" class="chip chip-gray" style="margin-left:4px"></span> <span id="slack-last-updated" class="last-updated"></span></div><div class="card-subheading">Adobe Enterprise Workspace</div></div>
+        </div>
+
+        <span class="section-label">Pinned Channels</span>
+        <table class="ctable">
+          <thead><tr><th>Channel</th><th>Last Message</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">#aem-expertsc-private</td><td>"If UE shows an empty page body in your DA powered demo..." <span class="muted">— Apr 30</span></td></tr>
+            <tr><td class="bold">#dss-fig-leaders</td><td>Jeff Figueiredo: "Org Chart tab created. Blackout period 1hr." <span class="muted">— May 1</span></td></tr>
+            <tr><td class="bold">#aem-expertsc-industry-private</td><td>"a nice way to end the week" <span class="muted">— May 1</span></td></tr>
+            <tr><td class="bold">#team-remekie-aem-xsc</td><td class="muted">Bot: "Happy Monday!" (low activity)</td></tr>
+            <tr><td class="bold">#summit-2026-aem-demo-booths</td><td class="muted">—</td></tr>
+            <tr><td class="bold">#external-adobe-dept-cross-industry-demo</td><td>@mention by draj.shetty <span class="muted">— Mar 6</span></td></tr>
+          </tbody>
+        </table>
+
+        <span class="section-label">Priority People</span>
+        <div class="people-wrap">
+          <span class="person-chip"><span class="av">BL</span>Bill Lofft</span>
+          <span class="person-chip"><span class="av">BP</span>Bridget Portela</span>
+          <span class="person-chip"><span class="av">EJ</span>Emily Jansen</span>
+          <span class="person-chip"><span class="av">JM</span>Jake Monsen</span>
+          <span class="person-chip"><span class="av">JF</span>Jeff Figueiredo</span>
+          <span class="person-chip"><span class="av">JB</span>Joe Bianco</span>
+          <span class="person-chip"><span class="av">LS</span>Lisa Strickland</span>
+          <span class="person-chip"><span class="av">SH</span>Suzy Hall</span>
+          <span class="person-chip"><span class="av">JG</span>John Green</span>
+          <span class="person-chip"><span class="av">JM</span>Jim McGowan</span>
+          <span class="person-chip"><span class="av">LC</span>Liviu Chis</span>
+          <span class="person-chip"><span class="av">MS</span>Michael Smith</span>
+          <span class="person-chip"><span class="av">JP</span>Joe Pearl</span>
+        </div>
+
+        <span class="section-label">Direct @mentions</span>
+        <table class="ctable">
+          <thead><tr><th>Date</th><th>From</th><th>Channel</th></tr></thead>
+          <tbody id="slack-mentions-list">
+            <tr><td class="col-date">Mar 23</td><td class="bold">Jake Monsen</td><td>#content_and_collab_specialists</td></tr>
+            <tr><td class="col-date">Mar 6</td><td class="bold">draj.shetty</td><td>#external-adobe-dept-cross-industry-demo</td></tr>
+            <tr><td class="col-date">Mar 6</td><td class="bold">draj.shetty</td><td>#external-adobe-dept-cross-industry-demo</td></tr>
+            <tr><td class="col-date">Mar 6</td><td class="bold">draj.shetty</td><td>#external-adobe-dept-cross-industry-demo</td></tr>
+          </tbody>
+        </table>
+
+        <div class="action-row">
+          <button class="btn btn-sm" id="btn-refresh-slack">Refresh Slack</button>
+        </div>
+      </div>
+
+      <!-- ── TEAMS ────────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-head">
+          <div><div class="card-heading">Teams</div><div class="card-subheading">Microsoft Teams</div></div>
+        </div>
+
+        <span class="section-label">Watched Meetings</span>
+        <table class="ctable">
+          <thead><tr><th>Meeting</th><th>Organizer</th><th class="col-cadence">Cadence</th><th class="col-action"></th></tr></thead>
+          <tbody>
+            <tr><td class="bold">End of Week Manager Call</td><td>Bill Lofft</td><td class="col-cadence">Weekly Fri</td><td class="col-action"><button class="btn btn-sm rec-btn" data-meeting="End of Week Manager Call">Recordings</button></td></tr>
+            <tr><td class="bold">content + collab specialist 101</td><td>Amy Wowak</td><td class="col-cadence">Recurring</td><td class="col-action"><button class="btn btn-sm rec-btn" data-meeting="content + collab specialist 101">Recordings</button></td></tr>
+            <tr><td class="bold">AEM GTM Weekly</td><td>Adobe</td><td class="col-cadence">Weekly</td><td class="col-action"><button class="btn btn-sm rec-btn" data-meeting="AEM GTM Weekly">Recordings</button></td></tr>
+            <tr><td class="bold">Reference Demo</td><td>Ajani Thomas</td><td class="col-cadence">Recurring</td><td class="col-action"><button class="btn btn-sm rec-btn" data-meeting="Reference Demo">Recordings</button></td></tr>
+            <tr><td class="bold">AEM XSC Manager Meeting</td><td>Bill Lofft</td><td class="col-cadence">Weekly Mon</td><td class="col-action"><button class="btn btn-sm rec-btn" data-meeting="AEM XSC Manager Meeting">Recordings</button></td></tr>
+            <tr><td class="bold">AI Insiders</td><td>Adobe</td><td class="col-cadence">Recurring</td><td class="col-action"><button class="btn btn-sm rec-btn" data-meeting="AI Insiders">Recordings</button></td></tr>
+          </tbody>
+        </table>
+
+        <span class="section-label">Watched Teams</span>
+        <table class="ctable">
+          <thead><tr><th>Team</th><th class="col-date">Last Active</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">AEM NAM Expert SCs</td><td class="col-date">Apr 15</td></tr>
+            <tr><td class="bold">Content AEM DX-Insiders</td><td class="col-date muted">—</td></tr>
+            <tr><td class="bold">AI Insiders</td><td class="col-date muted">channel</td></tr>
+          </tbody>
+        </table>
+
+        <div class="action-row">
+          <button class="btn btn-sm" id="btn-refresh-teams">Refresh Teams Activity</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── OUTLOOK (full width) ──────────────────────────── -->
+    <div class="card mt-24">
+      <div class="card-head">
+        <div>
+          <div class="card-heading">Outlook <span id="outlook-unread-badge" class="chip chip-red" style="margin-left:4px">4,519 unread</span> <span id="outlook-last-updated" class="last-updated"></span></div>
+          <div class="card-subheading">remekie@adobe.com</div>
+        </div>
+        <a class="btn btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
+      </div>
+
+      <div class="grid-3 mt-16 outlook-swimlanes">
+        <!-- Meetings / Invites -->
+        <div>
+          <span class="section-label mt-0">Meetings / Invites</span>
+          <table class="ctable">
+            <tbody>
+              <tr><td class="bold">RE: Summit 26 Campaign RECORDS Dashboard</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">Chiyomi Kuroki-Hirano</td></tr>
+              <tr><td class="bold">[Wrap-up] 4/29 AEM GTM Weekly</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">John Campion</td></tr>
+              <tr><td class="bold">Sprint 39 Release Highlights</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">Keith Carswell</td></tr>
+              <tr><td class="bold">Re: JAPAC Adobe Summit Booth</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">Aeron Dundas</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- People -->
+        <div>
+          <span class="section-label mt-0">People <span class="chip chip-green">adobe.com</span></span>
+          <table class="ctable">
+            <tbody id="outlook-people-list">
+              <tr><td class="bold">RE: Summit 26 Campaign RECORDS Dashboard</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">Chiyomi Kuroki-Hirano</td></tr>
+              <tr><td class="bold">[Wrap-up] 4/29 AEM GTM Weekly</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">John Campion</td></tr>
+              <tr><td class="bold">Sprint 39 Release Highlights</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">Keith Carswell</td></tr>
+              <tr><td class="bold">Re: JAPAC Adobe Summit Booth</td></tr>
+              <tr><td class="muted" style="padding-top:0;border:none;">Aeron Dundas</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <!-- To-Do / Flagged -->
+        <div>
+          <span class="section-label mt-0">To-Do / Flagged</span>
+          <div class="empty-state">
+            <div class="empty-title">No flagged emails</div>
+            Flag items in Outlook to surface them here.
+          </div>
+          <div class="action-row" style="justify-content:center;">
+            <a class="btn btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
+          </div>
+        </div>
+      </div>
+      <div class="filter-note">Filters active — hiding Uber receipts, LinkedIn alerts, Concur notifications, automated senders</div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- TAB 2: MEETINGS                                         -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-meetings">
+    <div class="card">
+      <div class="card-head">
+        <div><div class="card-heading">This Week</div><div class="card-subheading">May 3–9, 2026 &middot; All times MDT &middot; Edmonton</div></div>
+        <a class="btn btn-sm" href="https://outlook.office.com/calendar" target="_blank">Open Calendar</a>
+      </div>
+      <table class="ctable mt-16">
+        <thead><tr><th class="col-time">Time</th><th>Event</th><th class="col-narrow meetings-organizer">Organizer</th><th class="col-tag"></th></tr></thead>
+        <tbody>
+          <tr class="day-header"><td colspan="4">Sunday, May 3 <span class="chip-today">Today</span></td></tr>
+          <tr><td class="col-time">9:00 AM</td><td class="bold">Exhibition vs. Juventus (Schaefer)</td><td>BTB Soccer</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+          <tr><td class="col-time">12:30 PM</td><td class="bold">Raiders vs Leduc Cats Yellow</td><td>BTB Soccer</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+          <tr><td class="col-time">1:30 PM</td><td class="bold">Raiders vs SAMFA 1</td><td>BTB Soccer</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+
+          <tr class="day-header"><td colspan="4">Monday, May 4</td></tr>
+          <tr><td class="col-time">9:00 AM</td><td class="bold">B2B Edition Technical Office Hours</td><td>Erik Rucker</td><td class="col-tag"></td></tr>
+          <tr><td class="col-time">10:00 AM</td><td class="bold">AEM XSC Manager Meeting</td><td>Bill Lofft</td><td class="col-tag"><span class="chip chip-blue">1:1</span></td></tr>
+          <tr><td class="col-time">11:00 AM</td><td class="bold">AEM XSC Office Hours - Demo Help</td><td>Emily Jansen</td><td class="col-tag"></td></tr>
+          <tr><td class="col-time">1:05 PM</td><td class="bold">Court/Lisa 1:1</td><td></td><td class="col-tag"><span class="chip chip-blue">1:1</span></td></tr>
+
+          <tr class="day-header"><td colspan="4">Tuesday, May 5</td></tr>
+          <tr><td class="col-time">10:00 AM</td><td class="bold">Reference Demo</td><td>Ajani Thomas</td><td class="col-tag"><span class="chip chip-orange">Demo</span></td></tr>
+          <tr><td class="col-time">10:00 AM</td><td class="bold">Adobe Leader Experience Masterclass</td><td>Talent Dev</td><td class="col-tag"></td></tr>
+          <tr><td class="col-time">10:00 AM</td><td class="bold">AEM Forms Demos - Bi-weekly</td><td>Chris J</td><td class="col-tag"><span class="chip chip-orange">Demo</span></td></tr>
+          <tr><td class="col-time">10:25 AM</td><td class="bold">LLMO &amp; AEM Demo</td><td></td><td class="col-tag"><span class="chip chip-orange">Demo</span></td></tr>
+          <tr><td class="col-time">2:30 PM</td><td class="bold">Amazon Summit in a Box Next Steps</td><td>Fariz Mohamed</td><td class="col-tag"></td></tr>
+          <tr><td class="col-time muted">—</td><td class="bold">Mark/Bill/Court - AEM Sync</td><td>Sal Scilingo</td><td class="col-tag"></td></tr>
+
+          <tr class="day-header"><td colspan="4">Wednesday, May 6</td></tr>
+          <tr><td class="col-time">9:00 AM</td><td class="bold">AI at Work: Use Claude Like a Pro</td><td></td><td class="col-tag"></td></tr>
+
+          <tr class="day-header"><td colspan="4">Saturday, May 9</td></tr>
+          <tr><td class="col-time">5:00 AM</td><td class="bold">Theo Football — Game Week 3</td><td>CDMFA</td><td class="col-tag"><span class="chip chip-orange">Football</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- TAB 3: PERSONAL                                         -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-personal">
+    <div class="grid-2 personal-grid">
+      <!-- ── GMAIL ──────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-heading">Gmail <span class="badge-negative" style="font-size:10px">2,055 unread</span></div>
+            <div class="card-subheading">courtney.remekie@gmail.com</div>
+          </div>
+          <a class="btn btn-sm" href="https://mail.google.com" target="_blank">Open Gmail</a>
+        </div>
+        <div class="filter-pill">Family filter: Theo &middot; Soccer &middot; Football &middot; Jayleen &middot; Kyra</div>
+
+        <table class="ctable mt-16">
+          <thead><tr><th>From</th><th>Subject</th><th class="col-tag">Tag</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">BTB U9 BOYS 2017</td><td>Game Reminder: Forza FC (Ponte), Mon May 4 6pm</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+            <tr><td class="bold">BTB Soccer Club</td><td>BTB Picture Day - May 2nd and 3rd</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+            <tr><td class="bold">CDMFA</td><td>URGENT UPDATE - Flag Football Schedules May 2/3</td><td class="col-tag"><span class="chip chip-orange">Football</span></td></tr>
+            <tr><td class="bold">Kyra Remekie</td><td>RDP Spring Term Tuition Deadline – Mon May 4</td><td class="col-tag"><span class="chip chip-purple">Kyra</span></td></tr>
+            <tr><td class="bold">Google Calendar</td><td>Theo Football - Game Week 2, Sat May 2</td><td class="col-tag"><span class="chip chip-orange">Football</span></td></tr>
+            <tr><td class="bold">Dani Harrigan</td><td>Updated BTB U9 BOYS Game at NSU (Dominguez)</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+          </tbody>
+        </table>
+        <div class="card-footer">Filtered to family &middot; 2,055 unread total &middot; <a href="https://mail.google.com" target="_blank">Open Gmail &rarr;</a></div>
+      </div>
+
+      <!-- ── ZYRA ──────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="card-heading">Zyra Spirits <span class="badge-negative" style="font-size:10px">40 unread</span></div>
+            <div class="card-subheading">courtney@drinkzyra.com</div>
+          </div>
+          <a class="btn btn-sm" href="https://webmail.dreamhost.com" target="_blank">Open Zyra Mail</a>
+        </div>
+        <div class="filter-pill">Business filter: hiding Uline catalogs + routine DHL charges</div>
+
+        <table class="ctable mt-16">
+          <thead><tr><th>From</th><th>Subject</th><th class="col-tag">Tag</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">Suits Staffing</td><td>Re: Zyra Spirits — Greg at Cariwest suggested I reach out</td><td class="col-tag"><span class="chip chip-green">Partnership</span></td></tr>
+            <tr><td class="bold">Nate Reinhart</td><td>Zyra x O'Byrne's</td><td class="col-tag"><span class="chip chip-green">Partnership</span></td></tr>
+            <tr><td class="bold">Jasmine K. (SNDL)</td><td>Introduction: SNDL &times; Courtney (Drink Zyra)</td><td class="col-tag"><span class="chip chip-green">Partnership</span></td></tr>
+            <tr><td class="bold">Viju Vasudevan</td><td>RE: Zyra Spirits - Product Profile</td><td class="col-tag"><span class="chip chip-blue">Business</span></td></tr>
+            <tr><td class="bold">Orchard Lane Media</td><td>Rate Card + Dates &amp; Menu</td><td class="col-tag"><span class="chip chip-amber">Event</span></td></tr>
+            <tr><td class="bold">Exhibitor</td><td>Beverage Booths Now on Sale!</td><td class="col-tag"><span class="chip chip-amber">Event</span></td></tr>
+            <tr><td class="bold">Spotlens</td><td>Your April 2026 Spotlens recap — Zyra</td><td class="col-tag"><span class="chip chip-blue">Analytics</span></td></tr>
+            <tr><td class="bold">RBC Royal Bank</td><td>eStatement is ready</td><td class="col-tag"><span class="chip chip-gray">Banking</span></td></tr>
+          </tbody>
+        </table>
+        <div class="card-footer">Filtered &middot; hiding Uline + DHL routine &middot; 40 unread total &middot; <a href="https://webmail.dreamhost.com" target="_blank">Open Zyra Mail &rarr;</a></div>
+      </div>
+
+      <!-- ── MESSAGING ROW: Google Messages + WhatsApp ─────── -->
+      <div class="card full-width" style="padding:0;border:none;box-shadow:none;background:transparent">
+        <div class="grid-2 personal-grid" style="gap:20px">
+          <!-- Google Messages -->
+          <div class="card" style="margin:0">
+            <div class="card-head">
+              <div>
+                <div class="card-heading">Messages <span id="messages-unread-badge" class="chip chip-gray" style="margin-left:4px">loading...</span> <span id="messages-last-updated" class="last-updated"></span></div>
+                <div class="card-subheading">Google Messages &middot; RCS/SMS &middot; S25</div>
+              </div>
+              <button class="btn btn-sm" id="btn-refresh-messages">Refresh</button>
+            </div>
+            <div id="messages-content">
+              <div style="padding:14px 0;color:#9d9da1;font-size:13px">Loading messages...</div>
+            </div>
+            <div class="card-footer"><a href="https://messages.google.com/web/conversations" target="_blank">Open Google Messages &rarr;</a></div>
+          </div>
+          <!-- WhatsApp -->
+          <div class="card" style="margin:0">
+            <div class="card-head">
+              <div>
+                <div class="card-heading">WhatsApp <span id="whatsapp-unread-badge" class="chip chip-gray" style="margin-left:4px">34 unread</span> <span id="whatsapp-last-updated" class="last-updated"></span></div>
+                <div class="card-subheading">web.whatsapp.com &middot; S25 linked</div>
+              </div>
+              <button class="btn btn-sm" id="btn-refresh-whatsapp">Refresh</button>
+            </div>
+            <div id="whatsapp-content">
+              <div style="padding:14px 0;color:#9d9da1;font-size:13px">Loading WhatsApp...</div>
+            </div>
+            <div class="card-footer">
+              <a href="https://web.whatsapp.com" target="_blank">Open WhatsApp &rarr;</a>
+              <span style="display:block;margin-top:6px;font-size:10px;color:#b0b0b6">Tip: To mute TH.I.N.K YeG &mdash; open the group in WhatsApp &rarr; group name &rarr; Mute notifications &rarr; Always</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── FAMILY CALENDAR (full width) ────────────────── -->
+      <div class="card full-width">
+        <div class="card-head">
+          <div><div class="card-heading">Family Calendar</div><div class="card-subheading">Week of May 3–9, 2026 &middot; All times MDT &middot; Edmonton</div></div>
+          <a class="btn btn-sm" href="https://calendar.google.com" target="_blank">Open Google Calendar</a>
+        </div>
+        <table class="ctable mt-16">
+          <thead><tr><th>Day</th><th class="col-time">Time (MDT)</th><th>Event</th><th>Location</th><th class="col-tag">Tag</th></tr></thead>
+          <tbody>
+            <tr><td class="bold">Sun May 3 <span class="chip-today">Today</span></td><td class="col-time">9:00 AM</td><td>Exhibition vs. Juventus (Schaefer)</td><td class="muted">Northmount School</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+            <tr><td></td><td class="col-time">12:30 PM</td><td>Raiders vs Leduc Cats Yellow</td><td class="muted">Field 11</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+            <tr><td></td><td class="col-time">1:30 PM</td><td>Raiders vs SAMFA 1</td><td class="muted">Field 10</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+            <tr><td class="bold">Mon May 4</td><td class="col-time">10:00 AM</td><td>Theo — Dr. Ryan appointment</td><td></td><td class="col-tag"><span class="chip chip-purple">Family</span></td></tr>
+            <tr><td></td><td class="col-time">2:00 PM</td><td>Theo U10 Raiders Black Practice</td><td class="muted">St. Francis Sports Fields</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+            <tr><td></td><td class="col-time">2:00 PM</td><td>Messed Up Mondays + Jorgia Lindquist</td><td></td><td class="col-tag"><span class="chip chip-gray">Personal</span></td></tr>
+            <tr><td class="bold">Tue May 5</td><td class="col-time">5:00 AM</td><td>Class Photos</td><td></td><td class="col-tag"><span class="chip chip-purple">Family</span></td></tr>
+            <tr><td class="bold">Wed May 6</td><td class="col-time">12:00 PM</td><td>Theo swimming</td><td></td><td class="col-tag"><span class="chip chip-purple">Family</span></td></tr>
+            <tr><td></td><td class="col-time">2:00 PM</td><td>Theo U10 Raiders Black Practice</td><td class="muted">St. Francis Sports Fields</td><td class="col-tag"><span class="chip chip-blue">Soccer</span></td></tr>
+            <tr><td class="bold">Sat May 9</td><td class="col-time">5:00 AM</td><td>Theo Football — Game Week 3</td><td class="muted">EFFA Fields</td><td class="col-tag"><span class="chip chip-orange">Football</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── GOOGLE DRIVE ────────────────────────────────── -->
+      <div class="card full-width">
+        <div class="card-head">
+          <div><div class="card-heading">Google Drive</div><div class="card-subheading">courtney.remekie@gmail.com</div></div>
+          <a class="btn btn-sm" href="https://drive.google.com" target="_blank">Open Drive</a>
+        </div>
+        <p style="color:#9d9da1; font-size:13px; margin:8px 0 0;">Browse personal files and documents.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- TAB 4: FILES & RECORDINGS                               -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-files">
+    <div class="card">
+      <div class="card-head">
+        <div><div class="card-heading">Team Recordings</div><div class="card-subheading">Microsoft Teams</div></div>
+        <button class="btn btn-primary btn-sm" id="btn-fetch-recordings">Fetch Recordings</button>
+      </div>
+      <p style="color:#9d9da1; font-size:13px; margin:6px 0 0;">Recordings from your watched meetings will appear here after refreshing.</p>
+
+      <table class="ctable mt-16">
+        <thead><tr><th>Recording</th><th>Organizer</th><th class="col-date">Date</th><th class="col-tag">Source</th></tr></thead>
+        <tbody>
+          <tr><td class="bold">End of Week Manager Call</td><td>Bill Lofft</td><td class="col-date">Fri Apr 25</td><td class="col-tag"><span class="chip chip-blue">Teams</span></td></tr>
+          <tr><td class="bold">AEM XSC Manager Meeting</td><td>Bill Lofft</td><td class="col-date">Mon Apr 28</td><td class="col-tag"><span class="chip chip-blue">Teams</span></td></tr>
+          <tr><td class="bold">content + collab specialist 101</td><td>Amy Wowak</td><td class="col-date">(recent)</td><td class="col-tag"><span class="chip chip-blue">Teams</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card mt-24">
+      <div class="card-head">
+        <div><div class="card-heading">SharePoint</div><div class="card-subheading">adobe.sharepoint.com</div></div>
+        <a class="btn btn-sm" href="https://adobe.sharepoint.com" target="_blank">Open SharePoint</a>
+      </div>
+      <p style="color:#9d9da1; font-size:13px; margin:8px 0 0;">Access shared documents and team sites.</p>
+    </div>
+  </div>
+
+</div> <!-- /page-panels -->
+</div> <!-- /page -->
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- ASSISTANT — Floating Panel                                -->
+<!-- ══════════════════════════════════════════════════════════ -->
+
+<!-- FAB toggle -->
+<div id="assistant-fab">
+  <button id="assistant-toggle">
+    <svg viewBox="0 0 133.46 118.11" width="18" height="16">
+      <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
+      <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
+      <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
+    </svg>
+    Ask Court's Co-worker
+  </button>
+</div>
+
+<!-- Panel -->
+<div id="assistant-panel" hidden>
+  <div class="panel-header">
+    <svg viewBox="0 0 133.46 118.11" width="18" height="16" style="flex-shrink:0">
+      <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
+      <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
+      <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
+    </svg>
+    <div style="flex:1">
+      <div class="title">Court's Co-worker</div>
+      <div class="subtitle">Powered by Claude &middot; knows your context</div>
+    </div>
+    <button class="close-btn" id="assistant-close">&times;</button>
+  </div>
+
+  <div id="assistant-messages">
+    <div class="msg-assistant">
+      <div class="msg-suggestions">
+        <strong>Hi Courtney! I'm connected to Slack, Teams, Outlook, Gmail, Zyra email, Google Messages, WhatsApp, and your calendars. Try:</strong>
+        &middot; "Book with Nissan about Project Drago Tuesday"
+        &middot; "Personal — book Kris Harvey Monday 2pm"
+        &middot; "What's my day Monday?"
+        &middot; "Any urgent Zyra emails?"
+        &middot; "Theo's games this week?"
+        &middot; "Unread WhatsApp from family?"
+      </div>
+    </div>
+  </div>
+
+  <div id="assistant-input-area">
+    <input type="text" id="assistant-input" placeholder="Ask anything about your day..."/>
+    <button id="assistant-send">Send</button>
+  </div>
+</div>
+
+<script src="/drafts/dashboard.js"></script>
+</body>
+</html>
