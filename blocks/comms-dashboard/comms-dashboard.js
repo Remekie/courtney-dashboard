@@ -802,7 +802,6 @@ export default async function decorate(block) {
       assistantPanel = buildAssistant(fresh, workerUrl);
       if (wasOpen) assistantPanel.classList.add('is-open');
       block.appendChild(assistantPanel);
-      fab.querySelector('button').onclick = toggleAssistant;
     }
   }, POLL_INTERVAL);
 }
