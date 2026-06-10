@@ -286,6 +286,58 @@ async function ingestCalendar(env, db) {
   return { events: count };
 }
 
+// ── Ingest: Google Drive ─────────────────────────────────
+
+async function ingestDrive(env, db) {
+  const token = await getGoogleToken(env);
+
+  const res = await fetch(
+    'https://www.googleapis.com/drive/v3/files?orderBy=modifiedTime+desc&pageSize=50&fields=files(id,name,mimeType,modifiedTime,sharingUser,lastModifyingUser,sharedWithMeTime)',
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw new Error(`Drive fetch failed: ${res.status}`);
+  const { files = [] } = await res.json();
+
+  let personCount = 0;
+  let projectCount = 0;
+
+  for (const file of files) {
+    // People: whoever shared a file with Courtney or last modified a shared doc
+    const sharer = file.sharingUser || file.lastModifyingUser;
+    if (sharer?.emailAddress) {
+      const ce = sharer.emailAddress.toLowerCase();
+      if (!ce.includes('remekie@adobe') && !ce.includes('courtney.remekie@gmail') && !ce.includes('courtney@drinkzyra')) {
+        const personId = `drive-${sharer.emailAddress.replace(/[^a-z0-9]/gi, '-')}`;
+        const world = classifyWorld(sharer.emailAddress, file.name);
+        const date = file.sharedWithMeTime || file.modifiedTime || new Date().toISOString();
+        await db.prepare(
+          `INSERT OR REPLACE INTO people (id, name, email, world, last_contact, relationship_strength)
+           VALUES (?, ?, ?, ?, ?, COALESCE((SELECT relationship_strength + 1 FROM people WHERE id = ?), 1))`,
+        ).bind(personId, sharer.displayName || sharer.emailAddress, sharer.emailAddress, world, date, personId).run();
+        personCount++;
+      }
+    }
+
+    // Projects: folders and documents indicate active work
+    const isDoc = file.mimeType?.includes('google-apps.folder') || file.mimeType?.includes('google-apps.document')
+      || file.mimeType?.includes('google-apps.spreadsheet') || file.mimeType?.includes('google-apps.presentation');
+    if (isDoc && file.name) {
+      const world = classifyWorld('', file.name);
+      await db.prepare(
+        `INSERT OR REPLACE INTO projects (id, name, world, status, last_activity, notes)
+         VALUES (?, ?, ?, 'active', ?, 'Google Drive')`,
+      ).bind(`drive-${file.id}`, file.name, world, file.modifiedTime || new Date().toISOString()).run();
+      projectCount++;
+    }
+  }
+
+  await db.prepare(
+    `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'gdrive', ?, 'ok')`,
+  ).bind(`log-${Date.now()}`, personCount + projectCount).run();
+
+  return { people: personCount, projects: projectCount };
+}
+
 // ── Ingest: manual JSON ───────────────────────────────────
 
 async function ingestJson(db, body) {
@@ -342,9 +394,9 @@ async function ingestZyraEmail(db, body) {
     const contact = parseEmail(contactHeader);
     if (!contact.email) continue;
 
-    // Skip own Zyra address
+    // Skip Courtney's own addresses only
     const ce = contact.email.toLowerCase();
-    if (ce.includes('drinkzyra') || ce.includes('courtney@') || ce.includes('remekie')) continue;
+    if (ce === 'courtney@drinkzyra.com' || ce.includes('remekie@adobe') || ce.includes('courtney.remekie@gmail')) continue;
 
     const date = email.date ? new Date(email.date).toISOString() : new Date().toISOString();
     const personId = `zyra-${contact.email.replace(/[^a-z0-9]/gi, '-')}`;
@@ -628,12 +680,14 @@ export default {
           result = await ingestGmail(env, env.DB);
         } else if (type === 'gcalendar') {
           result = await ingestCalendar(env, env.DB);
+        } else if (type === 'gdrive') {
+          result = await ingestDrive(env, env.DB);
         } else if (type === 'zyra_email') {
           result = await ingestZyraEmail(env.DB, body);
         } else if (['person', 'project', 'transaction'].includes(type)) {
           result = await ingestJson(env.DB, body);
         } else {
-          return json({ error: `Unknown ingest type: ${type}. Supported: gmail, gcalendar, zyra_email, person, project, transaction` }, 400, origin);
+          return json({ error: `Unknown ingest type: ${type}. Supported: gmail, gcalendar, gdrive, zyra_email, person, project, transaction` }, 400, origin);
         }
 
         await env.KV.put('brain:needs_synthesis', 'true');

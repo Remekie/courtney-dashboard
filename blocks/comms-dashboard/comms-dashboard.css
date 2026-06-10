@@ -755,6 +755,8 @@ body:has(.comms-dashboard) main > div > div {
 
 .cd-mt-16 { margin-top: var(--s-16); }
 .comms-dashboard.workspace-active .cd-assistant-fab { display: none; }
+.cd-brief-btn { background: rgba(255 255 255 / .1); border-color: rgba(255 255 255 / .2); color: var(--s-white); }
+.cd-brief-btn:hover { background: rgba(255 255 255 / .2); border-color: rgba(255 255 255 / .3); }
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 1024px) {

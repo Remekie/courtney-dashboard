@@ -597,7 +597,7 @@ function renderWorkspace(d) {
 
 // ── Assistant panel ───────────────────────────────────────
 
-function buildAssistant(data, workerUrl, sharedHistory) {
+function buildAssistant(data, workerUrl, sharedHistory, fabRef) {
   const panel = el('div', 'cd-assistant-panel');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', "Court's Co-worker");
@@ -671,6 +671,8 @@ function buildAssistant(data, workerUrl, sharedHistory) {
     input.value = '';
     reply(text);
   }
+
+  if (fabRef) fabRef.reply = reply;
 
   sendBtn.addEventListener('click', send);
   input.addEventListener('keydown', (e) => {
@@ -936,11 +938,13 @@ export default async function decorate(block) {
     <div class="cd-topbar-right">
       <span class="cd-unread-pill cd-unread-total" aria-label="Total unread messages">—</span>
       <span class="cd-unread-label">unread across all inboxes</span>
+      <button class="cd-btn cd-btn-sm cd-brief-btn" aria-label="Morning brief">☀️ Brief me</button>
     </div>`;
   block.appendChild(topbar);
 
   const sharedHistory = [];
   const wsRef = { reply: null };
+  const fabRef = { reply: null };
 
   // Tab bar
   const TABS = [
@@ -1019,7 +1023,7 @@ export default async function decorate(block) {
   render(data);
 
   // Build assistant FAB panel
-  let assistantPanel = buildAssistant(data || {}, workerUrl, sharedHistory);
+  let assistantPanel = buildAssistant(data || {}, workerUrl, sharedHistory, fabRef);
   block.appendChild(assistantPanel);
 
   const toggleAssistant = () => assistantPanel.classList.toggle('is-open');
@@ -1029,6 +1033,22 @@ export default async function decorate(block) {
     if (e.key === 'Escape') assistantPanel.classList.remove('is-open');
   });
 
+  // Morning digest — auto-trigger on first open before 10am, plus "Brief me" button
+  const DIGEST_KEY = 'cd-last-digest-date';
+  const DIGEST_PROMPT = 'Brief me on my day. Format as:\n\nURGENT · needs action today\nADOBE · key messages + meetings\nZYRA · inbounds + follow-ups\nFAMILY · calendar + Theo schedule\nPENDING TASKS · oldest first\n\nBe concise.';
+  const triggerDigest = () => {
+    assistantPanel.classList.add('is-open');
+    if (fabRef.reply) {
+      fabRef.reply(DIGEST_PROMPT);
+      localStorage.setItem(DIGEST_KEY, new Date().toLocaleDateString('en-CA'));
+    }
+  };
+  const today = new Date().toLocaleDateString('en-CA');
+  if (new Date().getHours() < 10 && localStorage.getItem(DIGEST_KEY) !== today) {
+    triggerDigest();
+  }
+  block.querySelector('.cd-brief-btn')?.addEventListener('click', triggerDigest);
+
   // Poll every 60s — preserve open state across rebuilds
   setInterval(async () => {
     const fresh = await fetchData(workerUrl);
@@ -1036,7 +1056,7 @@ export default async function decorate(block) {
       const wasOpen = assistantPanel.classList.contains('is-open');
       render(fresh);
       assistantPanel.remove();
-      assistantPanel = buildAssistant(fresh, workerUrl, sharedHistory);
+      assistantPanel = buildAssistant(fresh, workerUrl, sharedHistory, fabRef);
       if (wasOpen) assistantPanel.classList.add('is-open');
       block.appendChild(assistantPanel);
     }
