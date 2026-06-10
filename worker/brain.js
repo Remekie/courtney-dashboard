@@ -203,10 +203,7 @@ async function buildContext(query, env) {
   const results = await searchMemories(query, env);
   if (!results.length) return '';
   return '\n\nRELEVANT MEMORIES (from personal history):\n'
-    + results.map((r) => {
-      const when = r.created_at ? new Date(r.created_at).toLocaleDateString('en-CA', { month: 'short', year: 'numeric' }) : '';
-      return `  · ${when ? `[${when}] ` : ''}${r.memory}`;
-    }).join('\n');
+    + results.map((r) => `  · ${r.memory}`).join('\n');
 }
 
 // ── Ingest: Gmail ─────────────────────────────────────────
