@@ -38,12 +38,22 @@ function badge(text, variant) {
   return `<span class="cd-badge cd-badge-${v}">${text}</span>`;
 }
 
-function personChip(initials, name) {
-  return `<span class="cd-person-chip"><span class="cd-av">${initials}</span>${name}</span>`;
+function esc(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-function esc(str) {
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// Shared message bubble helper — used by FAB panel and Workspace chat
+function addMsg(container, text, role) {
+  const d = el('div', role === 'user' ? 'cd-msg-user' : 'cd-msg-assistant');
+  d.style.whiteSpace = 'pre-wrap';
+  d.textContent = text;
+  container.appendChild(d);
+  container.scrollTop = container.scrollHeight;
+  return d;
 }
 
 function relativeDate(isoString) {
@@ -66,6 +76,10 @@ const SEED_TASKS = [
   { id: 't-4', text: 'Drop off Zyra checks', tag: 'zyra', done: false, createdAt: '2026-06-10' },
 ];
 
+function saveTasks(tasks) {
+  try { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); } catch { /* ignore */ }
+}
+
 function loadTasks() {
   try {
     const raw = localStorage.getItem(TASKS_KEY);
@@ -73,10 +87,6 @@ function loadTasks() {
   } catch { /* ignore */ }
   saveTasks(SEED_TASKS);
   return [...SEED_TASKS];
-}
-
-function saveTasks(tasks) {
-  try { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); } catch { /* ignore */ }
 }
 
 function renderTaskList(taskListEl) {
@@ -277,7 +287,7 @@ function renderOutlook(d) {
   const flagged = od.flagged || [];
   const flaggedContent = flagged.length
     ? flagged.map((f) => `<div class="cd-bold cd-flagged-item">${f.subject}</div>`).join('')
-    : `<span class="cd-muted">No flagged emails</span>`;
+    : '<span class="cd-muted">No flagged emails</span>';
 
   return `
     <div class="cd-card-head">
@@ -329,7 +339,7 @@ function renderMeetings(d) {
     let dayRow = '';
     if (ev.day !== lastDay) {
       lastDay = ev.day;
-      const todayChip = ev.isToday ? `<span class="cd-badge cd-badge-today">Today</span>` : '';
+      const todayChip = ev.isToday ? '<span class="cd-badge cd-badge-today">Today</span>' : '';
       dayRow = `<tr class="cd-day-header"><td colspan="4">${ev.day} ${todayChip}</td></tr>`;
     }
     const tagHtml = ev.tag ? badge(ev.tag, badgeVariant(ev.tag)) : '';
@@ -362,13 +372,17 @@ function renderGmail(d) {
     ? `<span class="cd-last-updated">${relativeDate(d.gmail.updatedAt)}</span>`
     : '';
 
-  const rows = gd ? (gd.filtered || []).slice(0, 8).map((m) => `
+  const rows = gd ? (gd.filtered || []).slice(0, 8).map((m) => {
+    const timePart = m.time ? ` · ${m.time}` : '';
+    const dateTime = m.date ? `${m.date}${timePart}` : '';
+    return `
     <tr>
       <td class="cd-bold">${m.from}</td>
       <td>${m.subject}</td>
-      <td class="cd-col-date">${m.date ? `${m.date}${m.time ? ` · ${m.time}` : ''}` : ''}</td>
+      <td class="cd-col-date">${dateTime}</td>
       <td class="cd-col-tag">${badge(m.tag, badgeVariant(m.tag))}</td>
-    </tr>`).join('') : null;
+    </tr>`;
+  }).join('') : null;
 
   return `
     <div class="cd-card-head">
@@ -505,7 +519,8 @@ function renderFamilyCalendar(d) {
     let dayCell = '';
     if (ev.day !== lastDay) {
       lastDay = ev.day;
-      dayCell = `<td class="cd-bold">${ev.day}${ev.isToday ? ` <span class="cd-badge cd-badge-today">Today</span>` : ''}</td>`;
+      const todayBadge = ev.isToday ? ' <span class="cd-badge cd-badge-today">Today</span>' : '';
+      dayCell = `<td class="cd-bold">${ev.day}${todayBadge}</td>`;
     } else {
       dayCell = '<td></td>';
     }
@@ -632,17 +647,10 @@ function buildAssistant(data, workerUrl, sharedHistory, fabRef) {
   const input = panel.querySelector('.cd-assistant-input');
   const sendBtn = panel.querySelector('.cd-assistant-send');
   const micBtn = panel.querySelector('.cd-assistant-mic');
-  function addMsg(text, role) {
-    const d = el('div', role === 'user' ? 'cd-msg-user' : 'cd-msg-assistant');
-    d.style.whiteSpace = 'pre-wrap';
-    d.textContent = text;
-    messages.appendChild(d);
-    messages.scrollTop = messages.scrollHeight;
-    return d;
-  }
+  const addMsgFab = (text, role) => addMsg(messages, text, role);
 
   async function reply(text) {
-    const typing = addMsg('Thinking…', 'assistant');
+    const typing = addMsgFab('Thinking…', 'assistant');
     typing.classList.add('cd-msg-typing');
     try {
       const res = await fetch(`${workerUrl}/chat`, {
@@ -652,14 +660,14 @@ function buildAssistant(data, workerUrl, sharedHistory, fabRef) {
       });
       const { reply: replyText, error } = await res.json();
       typing.remove();
-      const replyMsg = addMsg(replyText || error || 'Something went wrong.', 'assistant');
+      const replyMsg = addMsgFab(replyText || error || 'Something went wrong.', 'assistant');
       if (replyText) {
         sharedHistory.push({ role: 'user', content: text }, { role: 'assistant', content: replyText });
       }
       return replyMsg;
     } catch {
       typing.remove();
-      addMsg('Could not reach assistant — check worker status.', 'assistant');
+      addMsgFab('Could not reach assistant — check worker status.', 'assistant');
     }
     return null;
   }
@@ -667,7 +675,7 @@ function buildAssistant(data, workerUrl, sharedHistory, fabRef) {
   function send() {
     const text = input.value.trim();
     if (!text) return;
-    addMsg(text, 'user');
+    addMsgFab(text, 'user');
     input.value = '';
     reply(text);
   }
@@ -731,14 +739,7 @@ function buildWorkspaceChat(workerUrl, sharedHistory, wsRef) {
   const sendBtn = container.querySelector('.cd-assistant-send');
   const micBtn = container.querySelector('.cd-assistant-mic');
 
-  function addMsg(text, role) {
-    const d = el('div', role === 'user' ? 'cd-msg-user' : 'cd-msg-assistant');
-    d.style.whiteSpace = 'pre-wrap';
-    d.textContent = text;
-    messages.appendChild(d);
-    messages.scrollTop = messages.scrollHeight;
-    return d;
-  }
+  const addMsgWs = (text, role) => addMsg(messages, text, role);
 
   // Re-render existing history on rebuild
   if (sharedHistory.length === 0) {
@@ -746,13 +747,13 @@ function buildWorkspaceChat(workerUrl, sharedHistory, wsRef) {
     hint.innerHTML = '<strong>Hi! Ask me anything or check your tasks.</strong> · "What needs attention?" · "Any Zyra emails this week?"';
     messages.appendChild(hint);
   } else {
-    sharedHistory.forEach(({ role, content }) => addMsg(content, role));
+    sharedHistory.forEach(({ role, content }) => addMsgWs(content, role));
     messages.scrollTop = messages.scrollHeight;
   }
 
   async function reply(text) {
-    addMsg(text, 'user');
-    const typing = addMsg('Thinking…', 'assistant');
+    addMsgWs(text, 'user');
+    const typing = addMsgWs('Thinking…', 'assistant');
     typing.classList.add('cd-msg-typing');
     try {
       const res = await fetch(`${workerUrl}/chat`, {
@@ -762,13 +763,13 @@ function buildWorkspaceChat(workerUrl, sharedHistory, wsRef) {
       });
       const { reply: replyText, error } = await res.json();
       typing.remove();
-      addMsg(replyText || error || 'Something went wrong.', 'assistant');
+      addMsgWs(replyText || error || 'Something went wrong.', 'assistant');
       if (replyText) {
         sharedHistory.push({ role: 'user', content: text }, { role: 'assistant', content: replyText });
       }
     } catch {
       typing.remove();
-      addMsg('Could not reach assistant.', 'assistant');
+      addMsgWs('Could not reach assistant.', 'assistant');
     }
   }
 
@@ -948,9 +949,9 @@ export default async function decorate(block) {
 
   // Tab bar
   const TABS = [
-    { id: 'work',      label: 'Work' },
-    { id: 'meetings',  label: 'Meetings' },
-    { id: 'personal',  label: 'Personal' },
+    { id: 'work', label: 'Work' },
+    { id: 'meetings', label: 'Meetings' },
+    { id: 'personal', label: 'Personal' },
     { id: 'workspace', label: 'Workspace' },
   ];
   const tabBar = el('div', 'cd-tab-bar');
