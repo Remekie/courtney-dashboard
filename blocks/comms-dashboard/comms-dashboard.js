@@ -88,13 +88,22 @@ function renderSlack(d) {
     ? `<span class="cd-last-updated">${relativeDate(d.slack.updatedAt)}</span>`
     : '';
 
-  const channels = (sd.pinnedChannels || []).map((ch) => `
-    <tr>
-      <td class="cd-bold">#${ch.name}</td>
-      <td>${ch.lastMessage
-        ? `"${ch.lastMessage}" <span class="cd-muted">— ${ch.lastMessageDate || ''}</span>`
-        : '<span class="cd-muted">—</span>'}</td>
-    </tr>`).join('');
+  const channels = (sd.pinnedChannels || []).map((ch) => {
+    if (!ch.lastMessage) {
+      return `<tr><td class="cd-bold">#${ch.name}</td><td><span class="cd-muted">—</span></td></tr>`;
+    }
+    const short = ch.lastMessage.length > 80 ? ch.lastMessage.slice(0, 80) : ch.lastMessage;
+    const hasMore = ch.lastMessage.length > 80;
+    const id = `ch-${ch.name.replace(/\W/g, '')}`;
+    return `<tr>
+      <td class="cd-bold" style="white-space:nowrap">#${ch.name}</td>
+      <td>
+        <span class="cd-muted cd-msg-short" id="${id}-short">"${short}${hasMore ? '…' : ''}" — ${ch.lastMessageDate || ''}</span>
+        ${hasMore ? `<span class="cd-msg-full" id="${id}-full" hidden>"${ch.lastMessage}" <span class="cd-muted">— ${ch.lastMessageDate || ''}</span></span>
+        <button class="cd-msg-toggle" onclick="(function(){var s=document.getElementById('${id}-short'),f=document.getElementById('${id}-full');s.hidden=!s.hidden;f.hidden=!f.hidden;this.textContent=f.hidden?'more':'less'}).call(this)" style="background:none;border:none;color:var(--s-blue-700);cursor:pointer;font-size:10px;padding:0 4px">more</button>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
 
   const people = (sd.priorityPeople || [])
     .map((p) => personChip(p.initials, p.name)).join('');
