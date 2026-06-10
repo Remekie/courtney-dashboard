@@ -46,6 +46,14 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
+function buildThreadTable(threads) {
+  const rows = threads.slice(0, 6).map((t) => `
+    <tr><td class="cd-bold">${t.from}</td><td>${t.preview || ''}</td><td class="cd-col-date">${t.time || ''}</td></tr>`).join('');
+  return `<table class="cd-ctable cd-mt-16">
+    <thead><tr><th>From</th><th>Message</th><th class="cd-col-date">Time</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
 // Shared message bubble helper — used by FAB panel and Workspace chat
 function addMsg(container, text, role) {
   const d = el('div', role === 'user' ? 'cd-msg-user' : 'cd-msg-assistant');
@@ -457,15 +465,8 @@ function renderMessages(d) {
       </div>
       <a class="cd-btn cd-btn-sm" href="https://messages.google.com/web/conversations" target="_blank">Open Messages</a>
     </div>
-    ${md ? `<table class="cd-ctable cd-mt-16">
-      <thead><tr><th>From</th><th>Message</th><th class="cd-col-date">Time</th></tr></thead>
-      <tbody>${(md.threads || []).slice(0, 6).map((t) => `
-        <tr><td class="cd-bold">${t.from}</td><td>${t.preview || ''}</td><td class="cd-col-date">${t.time || ''}</td></tr>`).join('')}
-      </tbody></table>`
-    : `<div class="cd-empty-state">
-        <div class="cd-empty-title">Google Messages not connected</div>
-        Requires browser extension bridge → POST /data/messages
-       </div>`}`;
+    ${md ? buildThreadTable(md.threads || [])
+    : '<div class="cd-empty-state"><div class="cd-empty-title">Google Messages not connected</div>Requires browser extension bridge → POST /data/messages</div>'}`;
 }
 
 function renderWhatsApp(d) {
@@ -980,7 +981,8 @@ export default async function decorate(block) {
       if (id === 'workspace' && wsRef.reply) {
         const pending = loadTasks().filter((t) => !t.done);
         if (pending.length > 0) {
-          wsRef.reply(`I just opened my Workspace. I have ${pending.length} pending task(s): ${pending.map((t) => `"${t.text}" [${t.tag}]`).join(', ')}. Any urgent ones to flag?`);
+          const taskList = pending.map((t) => `"${t.text}" [${t.tag}]`).join(', ');
+          wsRef.reply(`I just opened my Workspace. I have ${pending.length} pending task(s): ${taskList}. Any urgent ones to flag?`);
         }
       }
     });
@@ -1036,7 +1038,10 @@ export default async function decorate(block) {
 
   // Morning digest — auto-trigger on first open before 10am, plus "Brief me" button
   const DIGEST_KEY = 'cd-last-digest-date';
-  const DIGEST_PROMPT = 'Brief me on my day. Format as:\n\nURGENT · needs action today\nADOBE · key messages + meetings\nZYRA · inbounds + follow-ups\nFAMILY · calendar + Theo schedule\nPENDING TASKS · oldest first\n\nBe concise.';
+  const DIGEST_PROMPT = 'Brief me on my day. Format as:\n\n'
+    + 'URGENT · needs action today\nADOBE · key messages + meetings\n'
+    + 'ZYRA · inbounds + follow-ups\nFAMILY · calendar + Theo schedule\n'
+    + 'PENDING TASKS · oldest first\n\nBe concise.';
   const triggerDigest = () => {
     assistantPanel.classList.add('is-open');
     if (fabRef.reply) {

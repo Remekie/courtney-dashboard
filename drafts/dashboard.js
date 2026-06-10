@@ -3,15 +3,12 @@
    dashboard.js — tabs, assistant, polling, button wiring
    ═══════════════════════════════════════════════════════════════ */
 
-(function () {
-  'use strict';
-
-  // ────── Tab switching ──────────────────────────────────────
-  window.switchTab = function switchTab(name) {
-    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    const btn = document.getElementById('tab-' + name);
-    const panel = document.getElementById('panel-' + name);
+// ────── Tab switching ──────────────────────────────────────
+window.switchTab = function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach((p) => p.classList.remove('active'));
+    const btn = document.getElementById(`tab-${name}`);
+    const panel = document.getElementById(`panel-${name}`);
     if (btn) btn.classList.add('active');
     if (panel) panel.classList.add('active');
   };

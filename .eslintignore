@@ -1,4 +1,6 @@
 helix-importer-ui
+drafts/**/*
+worker/**/*
 tools/**/*
 *.min.js
 sidekick-library.js
