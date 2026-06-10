@@ -95,7 +95,7 @@ function renderSlack(d) {
     const short = ch.lastMessage.length > 80 ? ch.lastMessage.slice(0, 80) : ch.lastMessage;
     const hasMore = ch.lastMessage.length > 80;
     return `<tr>
-      <td class="cd-bold" style="white-space:nowrap">#${ch.name}</td>
+      <td class="cd-bold cd-channel-name">#${ch.name}</td>
       <td>${hasMore
         ? `<details><summary class="cd-muted">"${short}…" — ${ch.lastMessageDate || ''}</summary><span class="cd-muted">"${ch.lastMessage}" — ${ch.lastMessageDate || ''}</span></details>`
         : `<span class="cd-muted">"${short}" — ${ch.lastMessageDate || ''}</span>`
@@ -109,7 +109,7 @@ function renderSlack(d) {
     const handle = slackPeople[p.name];
     const chip = `<span class="cd-av">${p.initials}</span>${p.name}`;
     return handle
-      ? `<a href="${slackBase}${handle}" target="_blank" class="cd-person-chip cd-person-chip-link">${chip}</a>`
+      ? `<a href="${slackBase}${handle}" target="_blank" rel="noopener noreferrer" class="cd-person-chip cd-person-chip-link">${chip}</a>`
       : `<span class="cd-person-chip">${chip}</span>`;
   }).join('');
 
@@ -117,7 +117,7 @@ function renderSlack(d) {
     <tr>
       <td class="cd-col-date">${m.date}</td>
       <td class="cd-bold">${m.from}</td>
-      <td class="cd-muted" style="font-size:11px">${m.message || m.channel || ''}</td>
+      <td class="cd-muted cd-mention-msg">${m.message || m.channel || ''}</td>
     </tr>`).join('');
 
   return `

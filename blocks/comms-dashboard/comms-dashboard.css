@@ -684,10 +684,12 @@ body:has(.comms-dashboard) main > div > div {
 .cd-assistant-mic.cd-mic-active { background: var(--s-red-100); border-color: var(--s-red-700); }
 
 /* Slack channel message expand */
-.cd-ctable details { cursor: pointer; }
-.cd-ctable details summary { color: var(--s-gray-500); }
-.cd-ctable details[open] summary { margin-bottom: var(--s-4); }
-.cd-person-chip-link { text-decoration: none; }
+.comms-dashboard .cd-ctable details { cursor: pointer; }
+.comms-dashboard .cd-ctable details summary { color: var(--s-gray-500); }
+.comms-dashboard .cd-ctable details[open] summary { margin-bottom: var(--s-4); }
+.comms-dashboard .cd-channel-name { white-space: nowrap; }
+.comms-dashboard .cd-mention-msg { font-size: var(--s-text-11); }
+.comms-dashboard .cd-person-chip-link { text-decoration: none; }
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 1024px) {
