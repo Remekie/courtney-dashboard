@@ -220,21 +220,17 @@ function renderOutlook(d) {
     ? `<span class="cd-last-updated">${relativeDate(d.outlook.updatedAt)}</span>`
     : '';
 
-  const meetings = (od.meetings || []).slice(0, 6).map((m) => `
-    <tr><td class="cd-bold">${m.subject}</td></tr>
-    <tr><td class="cd-muted" style="padding-top:0;border:none">${m.from || ''}</td></tr>`).join('');
-
-  const people = (od.people || []).slice(0, 6).map((p) => `
-    <tr><td class="cd-bold">${p.subject}</td></tr>
-    <tr><td class="cd-muted" style="padding-top:0;border:none">${p.from || ''}</td></tr>`).join('');
+  const emails = (od.emails || od.people || []).slice(0, 8).map((e) => `
+    <tr>
+      <td class="cd-bold">${e.subject}</td>
+      <td class="cd-muted cd-col-narrow">${e.from || ''}</td>
+      <td class="cd-col-date">${e.date || ''}</td>
+    </tr>`).join('');
 
   const flagged = od.flagged || [];
   const flaggedContent = flagged.length
-    ? `<table class="cd-ctable"><tbody>${flagged.map((f) => `<tr><td class="cd-bold">${f.subject}</td></tr>`).join('')}</tbody></table>`
-    : `<div class="cd-empty-state" style="padding:16px 0">
-        <div class="cd-empty-title">No flagged emails</div>
-        Flag items in Outlook to surface them here.
-       </div>`;
+    ? flagged.map((f) => `<div class="cd-bold" style="margin-bottom:4px">${f.subject}</div>`).join('')
+    : `<span class="cd-muted">No flagged emails</span>`;
 
   return `
     <div class="cd-card-head">
@@ -246,26 +242,22 @@ function renderOutlook(d) {
         </div>
         <div class="cd-card-subheading">remekie@adobe.com</div>
       </div>
-      <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
+      <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/mail" target="_blank" rel="noopener noreferrer">Open Outlook</a>
     </div>
-    <div class="cd-grid-3 cd-mt-16 cd-outlook-swimlanes">
+    <div class="cd-grid-2 cd-mt-16 cd-outlook-swimlanes">
       <div>
-        <span class="cd-section-label cd-mt-0">Meetings / Invites</span>
-        <table class="cd-ctable"><tbody>${meetings || '<tr><td class="cd-muted">None</td></tr>'}</tbody></table>
-      </div>
-      <div>
-        <span class="cd-section-label cd-mt-0">People ${badge('adobe.com', 'positive')}</span>
-        <table class="cd-ctable"><tbody>${people || '<tr><td class="cd-muted">None</td></tr>'}</tbody></table>
+        <span class="cd-section-label cd-mt-0">Recent Emails</span>
+        <table class="cd-ctable">
+          <thead><tr><th>Subject</th><th class="cd-col-narrow">From</th><th class="cd-col-date">Date</th></tr></thead>
+          <tbody>${emails || '<tr><td colspan="3" class="cd-muted">No emails</td></tr>'}</tbody>
+        </table>
       </div>
       <div>
         <span class="cd-section-label cd-mt-0">To-Do / Flagged</span>
         ${flaggedContent}
-        <div class="cd-action-row" style="justify-content:center">
-          <a class="cd-btn cd-btn-sm" href="https://outlook.office.com/mail" target="_blank">Open Outlook</a>
-        </div>
       </div>
     </div>
-    <div class="cd-filter-note">Filters active — hiding Uber receipts, LinkedIn alerts, Concur notifications, automated senders</div>`;
+    <div class="cd-filter-note">Filters active — hiding LinkedIn alerts, Concur, Uber receipts, automated senders</div>`;
 }
 
 // ── Meetings tab ──────────────────────────────────────────
@@ -644,11 +636,9 @@ function renderAll(block, panels, data) {
 
   // Work
   panels.work.innerHTML = `
-    <div class="cd-grid-2 cd-work-top-grid">
-      <div class="cd-card">${renderSlack(d)}</div>
-      <div class="cd-card">${renderTeams(d)}</div>
-    </div>
-    <div class="cd-card cd-mt-24">${renderOutlook(d)}</div>`;
+    <div class="cd-card">${renderOutlook(d)}</div>
+    <div class="cd-card cd-mt-24">${renderSlack(d)}</div>
+    <div class="cd-card cd-mt-24">${renderTeams(d)}</div>`;
 
   // Meetings
   panels.meetings.innerHTML = `<div class="cd-card">${renderMeetings(d)}</div>`;
