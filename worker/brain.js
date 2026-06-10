@@ -166,9 +166,9 @@ async function ingestGmail(env, db) {
 
   // Fetch recent inbox AND sent — sent emails are stronger relationship signal
   const [inboxRes, sentRes] = await Promise.all([
-    fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=15&labelIds=INBOX',
+    fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=40&labelIds=INBOX',
       { headers: { Authorization: `Bearer ${token}` } }),
-    fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=20&labelIds=SENT',
+    fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=60&labelIds=SENT',
       { headers: { Authorization: `Bearer ${token}` } }),
   ]);
   if (!inboxRes.ok) throw new Error(`Gmail inbox list failed: ${inboxRes.status}`);
@@ -254,11 +254,11 @@ async function ingestGmail(env, db) {
 async function ingestCalendar(env, db) {
   const token = await getGoogleToken(env);
 
-  const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const timeMax = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const timeMin = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const timeMax = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
 
   const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=100&singleEvents=true&orderBy=startTime`,
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=250&singleEvents=true&orderBy=startTime`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) throw new Error(`Calendar fetch failed: ${res.status}`);
@@ -292,7 +292,7 @@ async function ingestDrive(env, db) {
   const token = await getGoogleToken(env);
 
   const res = await fetch(
-    'https://www.googleapis.com/drive/v3/files?orderBy=modifiedTime+desc&pageSize=50&fields=files(id,name,mimeType,modifiedTime,sharingUser,lastModifyingUser,sharedWithMeTime)',
+    'https://www.googleapis.com/drive/v3/files?orderBy=modifiedTime+desc&pageSize=200&fields=files(id,name,mimeType,modifiedTime,sharingUser,lastModifyingUser,sharedWithMeTime)',
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!res.ok) throw new Error(`Drive fetch failed: ${res.status}`);
