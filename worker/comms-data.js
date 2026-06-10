@@ -146,16 +146,31 @@ async function handleChat(request, env, origin) {
     ? `\n\nPending tasks: ${tasks.map((t) => `"${t.text}" [${t.tag}]`).join(', ')}`
     : '';
 
+  const fmtPeople = (arr) => (arr || []).map((p) => {
+    const base = `${p.name} (${p.role || p.relationship || ''})`;
+    return p.notes ? `${base}: ${p.notes}` : base;
+  }).join('\n  · ');
+
   const brainCtx = brain ? `
 
-BRAIN PROFILE (synthesized from full email, calendar and Drive history):
-Key people Adobe: ${(brain.keyPeople?.adobe || []).map((p) => `${p.name} — ${p.role}`).join('; ')}
-Key people Zyra: ${(brain.keyPeople?.zyra || []).map((p) => `${p.name} — ${p.role}`).join('; ')}
-Family: ${(brain.keyPeople?.family || []).map((p) => `${p.name} — ${p.role}`).join('; ')}
-Active projects: ${(brain.activeProjects || []).map((p) => p.name).join(', ')}
-Writing style: ${brain.writingStyle?.tone || ''}
-Behavior patterns: ${JSON.stringify(brain.behaviorPatterns || {})}
-Spending patterns: ${JSON.stringify(brain.spendingPatterns || {})}` : '';
+BRAIN PROFILE — synthesized from full email, calendar and Drive history:
+
+FAMILY (deep context):
+  · ${fmtPeople(brain.keyPeople?.family)}
+
+KEY PEOPLE — Adobe:
+  · ${fmtPeople(brain.keyPeople?.adobe)}
+
+KEY PEOPLE — Zyra:
+  · ${fmtPeople(brain.keyPeople?.zyra)}
+
+ACTIVE PROJECTS: ${(brain.activeProjects || []).map((p) => `${p.name}${p.notes ? ` (${p.notes})` : ''}`).join(', ')}
+
+WRITING STYLE: ${brain.writingStyle?.tone || ''} | Signoff: ${brain.writingStyle?.signoff || 'Court'}
+
+BEHAVIOR: peak hours ${(brain.behaviorPatterns?.peakHours || []).join(', ')} | priorities: ${(brain.behaviorPatterns?.prioritySignals || []).slice(0, 3).join('; ')}
+
+SPENDING: ${Object.entries(brain.spendingPatterns || {}).map(([k, v]) => `${k}: ${v?.description || v}`).join(' | ')}` : '';
 
   const system = `You are Jon Jon, personal chief of staff for Courtney Remekie. You know him deeply.
 
