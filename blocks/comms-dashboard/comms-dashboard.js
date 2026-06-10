@@ -516,7 +516,7 @@ function renderFiles(d) {
 
 // ── Assistant panel ───────────────────────────────────────
 
-function buildAssistant(data) {
+function buildAssistant(data, workerUrl) {
   const panel = el('div', 'cd-assistant-panel');
   panel.hidden = true;
   panel.setAttribute('role', 'dialog');
@@ -542,6 +542,7 @@ function buildAssistant(data) {
     </div>
     <div class="cd-assistant-input-area">
       <input type="text" class="cd-assistant-input" placeholder="Ask anything about your day…" aria-label="Ask your assistant"/>
+      <button class="cd-assistant-mic" aria-label="Voice input">🎙</button>
       <button class="cd-assistant-send" aria-label="Send message">Send</button>
     </div>`;
 
@@ -550,6 +551,8 @@ function buildAssistant(data) {
   const messages = panel.querySelector('.cd-assistant-messages');
   const input = panel.querySelector('.cd-assistant-input');
   const sendBtn = panel.querySelector('.cd-assistant-send');
+  const micBtn = panel.querySelector('.cd-assistant-mic');
+  const messageHistory = [];
 
   function addMsg(text, role) {
     const d = el('div', role === 'user' ? 'cd-msg-user' : 'cd-msg-assistant');
@@ -560,38 +563,27 @@ function buildAssistant(data) {
     return d;
   }
 
-  function reply(text) {
+  async function reply(text) {
     const typing = addMsg('Thinking…', 'assistant');
     typing.classList.add('cd-msg-typing');
-    setTimeout(() => {
+    try {
+      const res = await fetch(`${workerUrl}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: messageHistory }),
+      });
+      const { reply: replyText, error } = await res.json();
       typing.remove();
-      let r;
-      if (/monday|what.*day|my day|tomorrow|schedule/i.test(text)) {
-        const events = data?.outlook?.data?.calendar?.events?.filter((e) => /monday/i.test(e.day)) || [];
-        r = events.length
-          ? `Monday:\n${events.map((e) => `• ${e.time} — ${e.title}`).join('\n')}`
-          : 'No calendar data yet — set up Power Automate to see your schedule.';
-      } else if (/urgent|flagged|action/i.test(text)) {
-        const flagged = data?.outlook?.data?.flagged || [];
-        r = flagged.length
-          ? `Flagged:\n${flagged.map((f) => `• ${f.subject}`).join('\n')}`
-          : 'No flagged items in Outlook.';
-      } else if (/zyra|spirits/i.test(text)) {
-        const items = data?.zyra?.data?.filtered || [];
-        r = items.length
-          ? `Zyra inbox:\n${items.slice(0, 5).map((i) => `• ${i.from}: ${i.subject}`).join('\n')}`
-          : 'Zyra inbox not connected yet.';
-      } else if (/theo|soccer|football|game/i.test(text)) {
-        const events = (data?.calendar?.data?.events || data?.gcalendar?.data?.events || [])
-          .filter((e) => /theo|soccer|football|raiders|btb/i.test(e.title));
-        r = events.length
-          ? `Theo's events this week:\n${events.map((e) => `• ${e.day} ${e.time} — ${e.title}`).join('\n')}`
-          : 'No Theo events found — connect Google Calendar via n8n.';
-      } else {
-        r = 'I can see your connected inboxes, Teams, and calendars. Ask about specific channels, people, meetings, or say "book…" to draft an invite. Full AI context replies available once Claude API is wired up in the worker.';
+      const replyMsg = addMsg(replyText || error || 'Something went wrong.', 'assistant');
+      if (replyText) {
+        messageHistory.push({ role: 'user', content: text }, { role: 'assistant', content: replyText });
       }
-      addMsg(r, 'assistant');
-    }, 500);
+      return replyMsg;
+    } catch {
+      typing.remove();
+      addMsg('Could not reach assistant — check worker status.', 'assistant');
+    }
+    return null;
   }
 
   function send() {
@@ -606,6 +598,27 @@ function buildAssistant(data) {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
+
+  // Voice input
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    micBtn.hidden = true;
+  } else {
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    micBtn.addEventListener('click', () => {
+      micBtn.classList.add('cd-mic-active');
+      recognition.start();
+    });
+    recognition.onresult = (e) => {
+      input.value = e.results[0][0].transcript;
+      micBtn.classList.remove('cd-mic-active');
+      send();
+    };
+    recognition.onerror = () => micBtn.classList.remove('cd-mic-active');
+    recognition.onend = () => micBtn.classList.remove('cd-mic-active');
+  }
 
   return panel;
 }
@@ -763,7 +776,7 @@ export default async function decorate(block) {
   renderAll(block, panels, data);
 
   // Build assistant with initial data
-  let assistantPanel = buildAssistant(data || {});
+  let assistantPanel = buildAssistant(data || {}, workerUrl);
   block.appendChild(assistantPanel);
 
   fab.querySelector('button').addEventListener('click', () => {
@@ -781,7 +794,7 @@ export default async function decorate(block) {
     if (fresh) {
       renderAll(block, panels, fresh);
       assistantPanel.remove();
-      assistantPanel = buildAssistant(fresh);
+      assistantPanel = buildAssistant(fresh, workerUrl);
       block.appendChild(assistantPanel);
       fab.querySelector('button').onclick = () => { assistantPanel.hidden = !assistantPanel.hidden; };
     }

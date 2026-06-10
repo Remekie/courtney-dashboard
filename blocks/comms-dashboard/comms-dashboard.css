@@ -665,6 +665,23 @@ body:has(.comms-dashboard) main > div > div {
   outline: 2px solid var(--s-blue-700);
   outline-offset: 2px;
 }
+.cd-assistant-mic {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--s-radius-sm);
+  border: 1px solid var(--s-gray-200);
+  background: var(--s-white);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--s-transition), border-color var(--s-transition);
+}
+.cd-assistant-mic:hover { background: var(--s-gray-75); border-color: var(--s-gray-300); }
+.cd-assistant-mic.cd-mic-active { background: var(--s-red-100); border-color: var(--s-red-700); }
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 1024px) {
@@ -685,6 +702,8 @@ body:has(.comms-dashboard) main > div > div {
   .cd-card { padding: var(--s-16); }
   .cd-col-cadence { display: none; }
   .cd-assistant-fab { bottom: var(--s-16); right: var(--s-16); }
+  .cd-assistant-send,
+  .cd-assistant-mic { height: 44px; min-width: 44px; }
   .cd-assistant-panel {
     bottom: 0;
     right: 0;

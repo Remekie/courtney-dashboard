@@ -5,9 +5,10 @@
  * GET  /data/:source  → returns one source (slack|teams|outlook|gmail|calendar)
  * POST /data/:source  → stores data for a source (requires Bearer token)
  * POST /data          → stores full payload at once (requires Bearer token)
+ * POST /chat          → Claude API proxy; body: { message, history[] }
  *
  * KV binding: COMMS_DATA
- * Env secret: WRITE_TOKEN
+ * Env secrets: WRITE_TOKEN, ANTHROPIC_API_KEY
  */
 
 const SOURCES = ['slack', 'teams', 'outlook', 'gmail', 'gcalendar', 'messages', 'whatsapp', 'zyra', 'gdrive'];
@@ -94,6 +95,45 @@ async function handlePost(source, request, env, origin) {
   return jsonResponse({ ok: true, results }, 200, origin);
 }
 
+async function handleChat(request, env, origin) {
+  let body;
+  try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, origin); }
+
+  const { message, history = [] } = body;
+  if (!message) return jsonResponse({ error: 'Missing message' }, 400, origin);
+
+  const all = {};
+  await Promise.all(SOURCES.map(async (s) => {
+    const raw = await env.COMMS_DATA.get(s);
+    all[s] = raw ? JSON.parse(raw) : null;
+  }));
+
+  const system = `You are Court's Co-worker, a personal assistant for Courtney Remekie (Adobe Solutions Consultant, Edmonton MDT).
+Live comms data: ${JSON.stringify(all)}
+Be concise. For write actions (send email, post to Slack, create calendar event), describe what you will do and ask for confirmation before acting.`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'anthropic-version': '2023-06-01',
+      'x-api-key': env.ANTHROPIC_API_KEY,
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system,
+      messages: [...history, { role: 'user', content: message }],
+    }),
+  });
+
+  if (!res.ok) return jsonResponse({ error: 'Claude API error' }, 502, origin);
+  const data = await res.json();
+  const reply = data.content?.[0]?.text;
+  if (!reply) return jsonResponse({ error: 'Empty response from Claude' }, 502, origin);
+  return jsonResponse({ reply }, 200, origin);
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
@@ -112,6 +152,9 @@ export default {
         },
       });
     }
+
+    // Chat: POST /chat
+    if (parts[0] === 'chat' && request.method === 'POST') return handleChat(request, env, origin);
 
     // Route: /data or /data/:source
     if (parts[0] === 'data') {
