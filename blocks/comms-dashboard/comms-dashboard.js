@@ -9,6 +9,7 @@
  */
 
 const POLL_INTERVAL = 60_000;
+const TASKS_KEY = 'cd-tasks';
 
 // ── Spectrum helpers ──────────────────────────────────────
 
@@ -41,6 +42,10 @@ function personChip(initials, name) {
   return `<span class="cd-person-chip"><span class="cd-av">${initials}</span>${name}</span>`;
 }
 
+function esc(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function relativeDate(isoString) {
   if (!isoString) return '';
   const diff = Date.now() - new Date(isoString).getTime();
@@ -50,6 +55,48 @@ function relativeDate(isoString) {
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
+}
+
+// ── Task storage (localStorage) ───────────────────────────
+
+const SEED_TASKS = [
+  { id: 't-1', text: 'Submit banking documents', tag: 'banking', done: false, createdAt: '2026-06-10' },
+  { id: 't-2', text: 'Seattle → Amazon meeting (Tuesday)', tag: 'travel', done: false, createdAt: '2026-06-10' },
+  { id: 't-3', text: 'Toronto → Agentic Roadshow (Wednesday) — book tickets', tag: 'travel', done: false, createdAt: '2026-06-10' },
+  { id: 't-4', text: 'Drop off Zyra checks', tag: 'zyra', done: false, createdAt: '2026-06-10' },
+];
+
+function loadTasks() {
+  try {
+    const raw = localStorage.getItem(TASKS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  saveTasks(SEED_TASKS);
+  return [...SEED_TASKS];
+}
+
+function saveTasks(tasks) {
+  try { localStorage.setItem(TASKS_KEY, JSON.stringify(tasks)); } catch { /* ignore */ }
+}
+
+function renderTaskList(taskListEl) {
+  const tasks = loadTasks();
+  taskListEl.innerHTML = tasks.length
+    ? tasks.map((t) => `
+        <div class="cd-task-item${t.done ? ' cd-task-done' : ''}" data-id="${esc(t.id)}" role="listitem">
+          <input type="checkbox" class="cd-task-check"${t.done ? ' checked' : ''} aria-label="Mark done"/>
+          <span class="cd-task-text">${esc(t.text)}</span>
+          ${badge(t.tag, badgeVariant(t.tag))}
+        </div>`).join('')
+    : '<p class="cd-muted" style="font-size:12px;padding:8px 0">No tasks yet — add one above.</p>';
+
+  taskListEl.querySelectorAll('.cd-task-check').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const { id } = cb.closest('[data-id]').dataset;
+      saveTasks(loadTasks().map((t) => (t.id === id ? { ...t, done: cb.checked } : t)));
+      renderTaskList(taskListEl);
+    });
+  });
 }
 
 // ── Data fetch ────────────────────────────────────────────
@@ -483,13 +530,11 @@ function renderFamilyCalendar(d) {
     </table>`;
 }
 
-// ── Files & Recordings tab ────────────────────────────────
+// ── Workspace tab ─────────────────────────────────────────
 
-function renderFiles(d) {
-  const td = d?.teams?.data;
-  const recordings = td?.recordings || [];
-
-  const rows = recordings.map((r) => `
+function renderWorkspace(d) {
+  const recordings = d?.teams?.data?.recordings || [];
+  const recRows = recordings.map((r) => `
     <tr>
       <td class="cd-bold">${r.name}</td>
       <td>${r.organizer || ''}</td>
@@ -498,32 +543,61 @@ function renderFiles(d) {
     </tr>`).join('');
 
   return `
-    <div class="cd-card">
-      <div class="cd-card-head">
-        <div><div class="cd-card-heading">Team Recordings</div>
-        <div class="cd-card-subheading">Microsoft Teams</div></div>
-        <button class="cd-btn cd-btn-primary cd-btn-sm" data-refresh="recordings">Fetch Recordings</button>
+    <div class="cd-workspace-grid">
+      <div class="cd-card cd-workspace-tasks">
+        <div class="cd-card-head">
+          <div>
+            <div class="cd-card-heading">Tasks</div>
+            <div class="cd-card-subheading">Voice or type to add · tagged · proactive reminders</div>
+          </div>
+        </div>
+        <div class="cd-task-input-row">
+          <input type="text" class="cd-task-input" placeholder="Add a task…" aria-label="New task"/>
+          <select class="cd-task-tag-select" aria-label="Tag">
+            <option value="work">Work</option>
+            <option value="zyra">Zyra</option>
+            <option value="banking">Banking</option>
+            <option value="travel">Travel</option>
+            <option value="family">Family</option>
+            <option value="personal">Personal</option>
+          </select>
+          <button class="cd-task-mic cd-assistant-mic" aria-label="Voice task input">🎙</button>
+          <button class="cd-task-add cd-btn cd-btn-primary cd-btn-sm">Add</button>
+        </div>
+        <div class="cd-task-list" role="list"></div>
       </div>
-      ${rows
-        ? `<table class="cd-ctable cd-mt-16">
-            <thead><tr><th>Recording</th><th>Organizer</th><th class="cd-col-date">Date</th><th class="cd-col-tag">Source</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>`
-        : '<p style="color:var(--s-gray-500);font-size:12px;margin:8px 0 0">Recordings sync via Power Automate after each watched meeting ends.</p>'}
+      <div class="cd-card cd-workspace-chat-card">
+        <div class="cd-workspace-chat-container"></div>
+      </div>
     </div>
-    <div class="cd-card cd-mt-24">
-      <div class="cd-card-head">
-        <div><div class="cd-card-heading">SharePoint</div>
-        <div class="cd-card-subheading">adobe.sharepoint.com</div></div>
-        <a class="cd-btn cd-btn-sm" href="https://adobe.sharepoint.com" target="_blank">Open SharePoint</a>
+    <div class="cd-mt-16">
+      <div class="cd-card">
+        <div class="cd-card-head">
+          <div><div class="cd-card-heading">Team Recordings</div>
+          <div class="cd-card-subheading">Microsoft Teams</div></div>
+          <button class="cd-btn cd-btn-primary cd-btn-sm" data-refresh="recordings">Fetch Recordings</button>
+        </div>
+        ${recRows
+          ? `<table class="cd-ctable cd-mt-16">
+              <thead><tr><th>Recording</th><th>Organizer</th><th class="cd-col-date">Date</th><th class="cd-col-tag">Source</th></tr></thead>
+              <tbody>${recRows}</tbody>
+            </table>`
+          : '<p class="cd-muted" style="font-size:12px;margin:8px 0 0">Recordings sync via Power Automate after each watched meeting ends.</p>'}
       </div>
-      <p style="color:var(--s-gray-500);font-size:12px;margin:8px 0 0">Access shared documents and team sites.</p>
+      <div class="cd-card cd-mt-24">
+        <div class="cd-card-head">
+          <div><div class="cd-card-heading">SharePoint</div>
+          <div class="cd-card-subheading">adobe.sharepoint.com</div></div>
+          <a class="cd-btn cd-btn-sm" href="https://adobe.sharepoint.com" target="_blank" rel="noopener noreferrer">Open SharePoint</a>
+        </div>
+        <p class="cd-muted" style="font-size:12px;margin:8px 0 0">Access shared documents and team sites.</p>
+      </div>
     </div>`;
 }
 
 // ── Assistant panel ───────────────────────────────────────
 
-function buildAssistant(data, workerUrl) {
+function buildAssistant(data, workerUrl, sharedHistory) {
   const panel = el('div', 'cd-assistant-panel');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', "Court's Co-worker");
@@ -558,8 +632,6 @@ function buildAssistant(data, workerUrl) {
   const input = panel.querySelector('.cd-assistant-input');
   const sendBtn = panel.querySelector('.cd-assistant-send');
   const micBtn = panel.querySelector('.cd-assistant-mic');
-  const messageHistory = [];
-
   function addMsg(text, role) {
     const d = el('div', role === 'user' ? 'cd-msg-user' : 'cd-msg-assistant');
     d.style.whiteSpace = 'pre-wrap';
@@ -576,13 +648,13 @@ function buildAssistant(data, workerUrl) {
       const res = await fetch(`${workerUrl}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history: messageHistory }),
+        body: JSON.stringify({ message: text, history: sharedHistory, tasks: loadTasks().filter((t) => !t.done) }),
       });
       const { reply: replyText, error } = await res.json();
       typing.remove();
       const replyMsg = addMsg(replyText || error || 'Something went wrong.', 'assistant');
       if (replyText) {
-        messageHistory.push({ role: 'user', content: text }, { role: 'assistant', content: replyText });
+        sharedHistory.push({ role: 'user', content: text }, { role: 'assistant', content: replyText });
       }
       return replyMsg;
     } catch {
@@ -629,9 +701,156 @@ function buildAssistant(data, workerUrl) {
   return panel;
 }
 
+// ── Workspace embedded chat ───────────────────────────────
+
+function buildWorkspaceChat(workerUrl, sharedHistory, wsRef) {
+  const container = el('div', 'cd-workspace-chat-inner');
+  container.innerHTML = `
+    <div class="cd-assistant-header">
+      <svg viewBox="0 0 133.46 118.11" width="18" height="16" aria-hidden="true" focusable="false">
+        <polygon fill="#fa0f00" points="84.13 0 133.46 0 133.46 118.11 84.13 0"/>
+        <polygon fill="#fa0f00" points="49.37 0 0 0 0 118.11 49.37 0"/>
+        <polygon fill="#fa0f00" points="66.75 43.53 98.18 118.11 77.58 118.11 68.18 94.36 45.18 94.36 66.75 43.53"/>
+      </svg>
+      <div style="flex:1">
+        <div class="cd-assistant-title">Court's Co-worker</div>
+        <div class="cd-assistant-subtitle">Powered by Claude · Workspace</div>
+      </div>
+    </div>
+    <div class="cd-assistant-messages" role="log" aria-live="polite"></div>
+    <div class="cd-assistant-input-area">
+      <input type="text" class="cd-assistant-input" placeholder="Ask anything…" aria-label="Ask your assistant"/>
+      <button class="cd-assistant-mic" aria-label="Voice input">🎙</button>
+      <button class="cd-assistant-send" aria-label="Send message">Send</button>
+    </div>`;
+
+  const messages = container.querySelector('.cd-assistant-messages');
+  const input = container.querySelector('.cd-assistant-input');
+  const sendBtn = container.querySelector('.cd-assistant-send');
+  const micBtn = container.querySelector('.cd-assistant-mic');
+
+  function addMsg(text, role) {
+    const d = el('div', role === 'user' ? 'cd-msg-user' : 'cd-msg-assistant');
+    d.style.whiteSpace = 'pre-wrap';
+    d.textContent = text;
+    messages.appendChild(d);
+    messages.scrollTop = messages.scrollHeight;
+    return d;
+  }
+
+  // Re-render existing history on rebuild
+  if (sharedHistory.length === 0) {
+    const hint = el('div', 'cd-msg-assistant cd-msg-suggestions');
+    hint.innerHTML = '<strong>Hi! Ask me anything or check your tasks.</strong> · "What needs attention?" · "Any Zyra emails this week?"';
+    messages.appendChild(hint);
+  } else {
+    sharedHistory.forEach(({ role, content }) => addMsg(content, role));
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  async function reply(text) {
+    addMsg(text, 'user');
+    const typing = addMsg('Thinking…', 'assistant');
+    typing.classList.add('cd-msg-typing');
+    try {
+      const res = await fetch(`${workerUrl}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: sharedHistory, tasks: loadTasks().filter((t) => !t.done) }),
+      });
+      const { reply: replyText, error } = await res.json();
+      typing.remove();
+      addMsg(replyText || error || 'Something went wrong.', 'assistant');
+      if (replyText) {
+        sharedHistory.push({ role: 'user', content: text }, { role: 'assistant', content: replyText });
+      }
+    } catch {
+      typing.remove();
+      addMsg('Could not reach assistant.', 'assistant');
+    }
+  }
+
+  if (wsRef) wsRef.reply = reply;
+
+  function send() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    reply(text);
+  }
+
+  sendBtn.addEventListener('click', send);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    micBtn.hidden = true;
+  } else {
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    micBtn.addEventListener('click', () => { micBtn.classList.add('cd-mic-active'); recognition.start(); });
+    recognition.onresult = (e) => { input.value = e.results[0][0].transcript; micBtn.classList.remove('cd-mic-active'); send(); };
+    recognition.onerror = () => micBtn.classList.remove('cd-mic-active');
+    recognition.onend = () => micBtn.classList.remove('cd-mic-active');
+  }
+
+  return container;
+}
+
+// ── Wire workspace tab ────────────────────────────────────
+
+function wireWorkspace(panel, workerUrl, sharedHistory, wsRef) {
+  // Inject inline chat
+  const chatContainer = panel.querySelector('.cd-workspace-chat-container');
+  if (chatContainer) {
+    chatContainer.innerHTML = '';
+    chatContainer.appendChild(buildWorkspaceChat(workerUrl, sharedHistory, wsRef));
+  }
+
+  // Render task list
+  const taskListEl = panel.querySelector('.cd-task-list');
+  if (taskListEl) renderTaskList(taskListEl);
+
+  // Wire task add
+  const taskInput = panel.querySelector('.cd-task-input');
+  const tagSel = panel.querySelector('.cd-task-tag-select');
+  const addBtn = panel.querySelector('.cd-task-add');
+  const taskMic = panel.querySelector('.cd-task-mic');
+
+  if (addBtn && taskInput && tagSel && taskListEl) {
+    const addTask = () => {
+      const text = taskInput.value.trim();
+      if (!text) return;
+      const newTask = { id: `t-${Date.now()}`, text, tag: tagSel.value, done: false, createdAt: new Date().toISOString() };
+      saveTasks([newTask, ...loadTasks()]);
+      taskInput.value = '';
+      renderTaskList(taskListEl);
+    };
+    addBtn.addEventListener('click', addTask);
+    taskInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addTask(); });
+  }
+
+  // Voice for task input
+  if (taskMic) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      taskMic.hidden = true;
+    } else {
+      const recog = new SpeechRecognition();
+      recog.lang = 'en-US';
+      taskMic.addEventListener('click', () => { taskMic.classList.add('cd-mic-active'); recog.start(); });
+      recog.onresult = (e) => { taskInput.value = e.results[0][0].transcript; taskMic.classList.remove('cd-mic-active'); };
+      recog.onerror = () => taskMic.classList.remove('cd-mic-active');
+      recog.onend = () => taskMic.classList.remove('cd-mic-active');
+    }
+  }
+}
+
 // ── Render all tabs ───────────────────────────────────────
 
-function renderAll(block, panels, data) {
+function renderAll(block, panels, data, renderCb) {
   const d = data || {};
 
   // Work
@@ -653,8 +872,8 @@ function renderAll(block, panels, data) {
       <div class="cd-card">${renderWhatsApp(d)}</div>
     </div>`;
 
-  // Files
-  panels.files.innerHTML = renderFiles(d);
+  // Workspace (HTML shell only — wireWorkspace wires tasks + chat)
+  panels.workspace.innerHTML = renderWorkspace(d);
 
   // Unread total badge in topbar
   const outlookUnread = d.outlook?.data?.unreadCount ?? 0;
@@ -672,18 +891,18 @@ function renderAll(block, panels, data) {
       btn.disabled = true;
       btn.textContent = 'Refreshing…';
       fetchData(btn.closest('[data-worker-url]')?.dataset.workerUrl || '')
-        .then((fresh) => { if (fresh) renderAll(block, panels, fresh); })
+        .then((fresh) => { if (fresh && renderCb) renderCb(fresh); })
         .finally(() => { btn.disabled = false; btn.textContent = orig; });
     });
   });
 
-  // Recordings nav shortcut
+  // Recordings nav shortcut → switches to Workspace tab
   block.querySelectorAll('[data-recordings]').forEach((btn) => {
     btn.addEventListener('click', () => {
       block.querySelectorAll('.cd-tab-btn').forEach((b) => b.classList.remove('active'));
       block.querySelectorAll('.cd-tab-panel').forEach((p) => p.classList.remove('active'));
-      block.querySelector('#cd-tab-files')?.classList.add('active');
-      panels.files.classList.add('active');
+      block.querySelector('#cd-tab-workspace')?.classList.add('active');
+      panels.workspace.classList.add('active');
     });
   });
 }
@@ -720,12 +939,15 @@ export default async function decorate(block) {
     </div>`;
   block.appendChild(topbar);
 
+  const sharedHistory = [];
+  const wsRef = { reply: null };
+
   // Tab bar
   const TABS = [
-    { id: 'work',     label: 'Work' },
-    { id: 'meetings', label: 'Meetings' },
-    { id: 'personal', label: 'Personal' },
-    { id: 'files',    label: 'Files & Recordings' },
+    { id: 'work',      label: 'Work' },
+    { id: 'meetings',  label: 'Meetings' },
+    { id: 'personal',  label: 'Personal' },
+    { id: 'workspace', label: 'Workspace' },
   ];
   const tabBar = el('div', 'cd-tab-bar');
   tabBar.setAttribute('role', 'tablist');
@@ -745,6 +967,17 @@ export default async function decorate(block) {
       btn.classList.add('active');
       btn.setAttribute('aria-selected', 'true');
       block.querySelector(`#cd-panel-${id}`)?.classList.add('active');
+
+      // Hide FAB on Workspace, show on all other tabs
+      block.classList.toggle('workspace-active', id === 'workspace');
+
+      // Proactive reminder when entering Workspace
+      if (id === 'workspace' && wsRef.reply) {
+        const pending = loadTasks().filter((t) => !t.done);
+        if (pending.length > 0) {
+          wsRef.reply(`I just opened my Workspace. I have ${pending.length} pending task(s): ${pending.map((t) => `"${t.text}" [${t.tag}]`).join(', ')}. Any urgent ones to flag?`);
+        }
+      }
     });
     tabBar.appendChild(btn);
   });
@@ -777,17 +1010,21 @@ export default async function decorate(block) {
 
   // Initial load + render
   const data = await fetchData(workerUrl);
-  renderAll(block, panels, data);
 
-  // Build assistant with initial data
-  let assistantPanel = buildAssistant(data || {}, workerUrl);
+  function render(d) {
+    renderAll(block, panels, d, render);
+    wireWorkspace(panels.workspace, workerUrl, sharedHistory, wsRef);
+  }
+
+  render(data);
+
+  // Build assistant FAB panel
+  let assistantPanel = buildAssistant(data || {}, workerUrl, sharedHistory);
   block.appendChild(assistantPanel);
 
   const toggleAssistant = () => assistantPanel.classList.toggle('is-open');
-
   fab.querySelector('button').addEventListener('click', toggleAssistant);
 
-  // Close assistant on Escape
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') assistantPanel.classList.remove('is-open');
   });
@@ -797,9 +1034,9 @@ export default async function decorate(block) {
     const fresh = await fetchData(workerUrl);
     if (fresh) {
       const wasOpen = assistantPanel.classList.contains('is-open');
-      renderAll(block, panels, fresh);
+      render(fresh);
       assistantPanel.remove();
-      assistantPanel = buildAssistant(fresh, workerUrl);
+      assistantPanel = buildAssistant(fresh, workerUrl, sharedHistory);
       if (wasOpen) assistantPanel.classList.add('is-open');
       block.appendChild(assistantPanel);
     }

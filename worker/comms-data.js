@@ -11,7 +11,7 @@
  * Env secrets: WRITE_TOKEN, ANTHROPIC_API_KEY
  */
 
-const SOURCES = ['slack', 'teams', 'outlook', 'gmail', 'gcalendar', 'messages', 'whatsapp', 'zyra', 'gdrive'];
+const SOURCES = ['slack', 'teams', 'outlook', 'gmail', 'gcalendar', 'messages', 'whatsapp', 'zyra', 'gdrive', 'tasks'];
 const CACHE_TTL = 300; // 5 minutes browser cache
 
 function cors(origin) {
@@ -99,7 +99,7 @@ async function handleChat(request, env, origin) {
   let body;
   try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, origin); }
 
-  const { message, history = [] } = body;
+  const { message, history = [], tasks = [] } = body;
   if (!message) return jsonResponse({ error: 'Missing message' }, 400, origin);
 
   const all = {};
@@ -108,8 +108,11 @@ async function handleChat(request, env, origin) {
     all[s] = raw ? JSON.parse(raw) : null;
   }));
 
+  const tasksCtx = tasks.length
+    ? `\n\nPending tasks: ${tasks.map((t) => `"${t.text}" [${t.tag}]`).join(', ')}`
+    : '';
   const system = `You are Court's Co-worker, a personal assistant for Courtney Remekie (Adobe Solutions Consultant, Edmonton MDT).
-Live comms data: ${JSON.stringify(all)}
+Live comms data: ${JSON.stringify(all)}${tasksCtx}
 Be concise. For write actions (send email, post to Slack, create calendar event), describe what you will do and ask for confirmation before acting.`;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
