@@ -10,9 +10,12 @@
  * Secrets:
  *   ANTHROPIC_API_KEY, BRAIN_TOKEN
  *   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+ *   MEM0_API_KEY
  */
 
 const REDIRECT_URI = 'https://brain.compass-xsc.workers.dev/auth/google/callback';
+const MEM0_API = 'https://api.mem0.ai/v1';
+const MEM0_USER = 'courtney';
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/calendar.readonly',
@@ -159,6 +162,53 @@ async function getGoogleToken(env) {
   return fresh.access_token;
 }
 
+// ── Mem0 memory helpers ──────────────────────────────────
+
+async function addMemory(text, metadata, env) {
+  if (!env.MEM0_API_KEY) return;
+  try {
+    await fetch(`${MEM0_API}/memories/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Token ${env.MEM0_API_KEY}` },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: text }],
+        user_id: MEM0_USER,
+        metadata: metadata || {},
+      }),
+    });
+  } catch { /* non-blocking — D1 is source of truth */ }
+}
+
+async function addMemories(texts, metadata, env) {
+  if (!env.MEM0_API_KEY || !texts.length) return;
+  for (let i = 0; i < texts.length; i += 10) {
+    await Promise.all(texts.slice(i, i + 10).map((t) => addMemory(t, metadata, env)));
+  }
+}
+
+async function searchMemories(query, env) {
+  if (!env.MEM0_API_KEY) return [];
+  try {
+    const res = await fetch(`${MEM0_API}/memories/search/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Token ${env.MEM0_API_KEY}` },
+      body: JSON.stringify({ query, user_id: MEM0_USER, limit: 20 }),
+    });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
+}
+
+async function buildContext(query, env) {
+  const results = await searchMemories(query, env);
+  if (!results.length) return '';
+  return '\n\nRELEVANT MEMORIES (from personal history):\n'
+    + results.map((r) => {
+      const when = r.created_at ? new Date(r.created_at).toLocaleDateString('en-CA', { month: 'short', year: 'numeric' }) : '';
+      return `  · ${when ? `[${when}] ` : ''}${r.memory}`;
+    }).join('\n');
+}
+
 // ── Ingest: Gmail ─────────────────────────────────────────
 
 async function ingestGmail(env, db) {
@@ -211,6 +261,7 @@ async function ingestGmail(env, db) {
 
   let personCount = 0;
   let interactionCount = 0;
+  const gmailMemories = [];
 
   const interactionStmt = db.prepare(
     `INSERT OR IGNORE INTO interactions (id, type, source, content_summary, world, created_at)
@@ -250,9 +301,14 @@ async function ingestGmail(env, db) {
         date,
       ),
     ]);
+
+    const dateStr = h.Date ? new Date(h.Date).toLocaleDateString('en-CA', { month: 'short', year: 'numeric' }) : 'recently';
+    gmailMemories.push(`[${dateStr}] ${isSent ? 'Court emailed' : 'Email from'} ${contact.name} (${contact.email}): "${h.Subject || '(no subject)'}" [${world}]`);
     personCount++;
     interactionCount++;
   }
+
+  await addMemories(gmailMemories, { source: 'gmail' }, env);
 
   await db.prepare(
     `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'gmail', ?, 'ok')`,
@@ -284,14 +340,21 @@ async function ingestCalendar(env, db) {
   );
 
   let count = 0;
+  const calMemories = [];
   for (const ev of items) {
     const attendees = JSON.stringify((ev.attendees || []).map((a) => a.email));
     const world = classifyWorld('', ev.summary || '');
     const start = ev.start?.dateTime || ev.start?.date || '';
     const end = ev.end?.dateTime || ev.end?.date || '';
     await stmt.bind(ev.id, ev.summary || '(untitled)', start, end, attendees, world).run();
+
+    const dateStr = start ? new Date(start).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    const others = (ev.attendees || []).map((a) => a.email).filter((e) => !e.includes('remekie'));
+    calMemories.push(`[${dateStr}] Calendar: "${ev.summary || '(untitled)'}"${others.length ? ` with ${others.join(', ')}` : ''} [${world}]`);
     count++;
   }
+
+  await addMemories(calMemories, { source: 'gcalendar' }, env);
 
   await db.prepare(
     `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'gcalendar', ?, 'ok')`,
@@ -316,6 +379,7 @@ async function ingestDrive(env, db) {
 
   let personCount = 0;
   let projectCount = 0;
+  const driveMemories = [];
 
   for (const file of files) {
     // People: whoever shared a file with Courtney or last modified a shared doc
@@ -343,9 +407,14 @@ async function ingestDrive(env, db) {
         `INSERT OR REPLACE INTO projects (id, name, world, status, last_activity, notes)
          VALUES (?, ?, ?, 'active', ?, 'Google Drive')`,
       ).bind(`drive-${file.id}`, file.name, world, file.modifiedTime || new Date().toISOString()).run();
+      const modStr = file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString('en-CA', { month: 'short', year: 'numeric' }) : '';
+      const sharerInfo = sharer?.displayName ? ` — modified by ${sharer.displayName}` : '';
+      driveMemories.push(`[${modStr}] Drive project: "${file.name}"${sharerInfo} [${world}]`);
       projectCount++;
     }
   }
+
+  await addMemories(driveMemories, { source: 'gdrive' }, env);
 
   await db.prepare(
     `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'gdrive', ?, 'ok')`,
@@ -394,10 +463,11 @@ async function ingestJson(db, body) {
 
 // ── Ingest: Zyra emails (from n8n IMAP) ──────────────────
 
-async function ingestZyraEmail(db, body) {
+async function ingestZyraEmail(db, body, env) {
   const { emails = [] } = body;
   let personCount = 0;
   let interactionCount = 0;
+  const zyraMemories = [];
 
   const interactionStmt = db.prepare(
     `INSERT OR IGNORE INTO interactions (id, type, source, content_summary, world, created_at)
@@ -430,9 +500,14 @@ async function ingestZyraEmail(db, body) {
         date,
       ),
     ]);
+
+    const dateStr = email.date ? new Date(email.date).toLocaleDateString('en-CA', { month: 'short', year: 'numeric' }) : 'recently';
+    zyraMemories.push(`[${dateStr}] ${email.isSent ? 'Court emailed' : 'Zyra email from'} ${contact.name} (${contact.email}): "${email.subject || '(no subject)'}" [zyra]`);
     personCount++;
     interactionCount++;
   }
+
+  await addMemories(zyraMemories, { source: 'zyra_email' }, env);
 
   await db.prepare(
     `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'zyra_email', ?, 'ok')`,
@@ -713,7 +788,7 @@ export default {
         } else if (type === 'gdrive') {
           result = await ingestDrive(env, env.DB);
         } else if (type === 'zyra_email') {
-          result = await ingestZyraEmail(env.DB, body);
+          result = await ingestZyraEmail(env.DB, body, env);
         } else if (['person', 'project', 'transaction'].includes(type)) {
           result = await ingestJson(env.DB, body);
         } else {
@@ -722,6 +797,20 @@ export default {
 
         await env.KV.put('brain:needs_synthesis', 'true');
         return json({ ok: true, type, ...result }, 200, origin);
+      } catch (err) {
+        return json({ error: err.message }, 500, origin);
+      }
+    }
+
+    // POST /brain/context — Mem0 semantic search for chat context
+    if (path === '/brain/context' && request.method === 'POST') {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: 'Invalid JSON' }, 400, origin); }
+      const { query } = body;
+      if (!query) return json({ error: 'Missing query' }, 400, origin);
+      try {
+        const context = await buildContext(query, env);
+        return json({ context, query }, 200, origin);
       } catch (err) {
         return json({ error: err.message }, 500, origin);
       }

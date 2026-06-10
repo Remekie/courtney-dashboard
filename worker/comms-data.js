@@ -95,17 +95,26 @@ async function handlePost(source, request, env, origin) {
   return jsonResponse({ ok: true, results }, 200, origin);
 }
 
-async function getBrainProfile(env) {
+async function getContextForQuery(message, env) {
+  const cacheKey = `ctx:${message.slice(0, 60).replace(/\W/g, '').toLowerCase().slice(0, 40)}`;
   try {
-    const cached = await env.COMMS_DATA.get('brain:profile:cache', 'json');
+    const cached = await env.COMMS_DATA.get(cacheKey);
     if (cached) return cached;
-    const res = await fetch('https://brain.compass-xsc.workers.dev/brain/profile', {
+    const res = await fetch('https://brain.compass-xsc.workers.dev/brain/context', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.BRAIN_TOKEN}` },
+      body: JSON.stringify({ query: message }),
+    });
+    if (res.ok) {
+      const { context } = await res.json();
+      if (context) await env.COMMS_DATA.put(cacheKey, context, { expirationTtl: 300 });
+      return context || null;
+    }
+    // Fallback: static synthesized profile
+    const profileRes = await fetch('https://brain.compass-xsc.workers.dev/brain/profile', {
       headers: { Authorization: `Bearer ${env.BRAIN_TOKEN}` },
     });
-    if (!res.ok) return null;
-    const profile = await res.json();
-    await env.COMMS_DATA.put('brain:profile:cache', JSON.stringify(profile), { expirationTtl: 3600 });
-    return profile;
+    return profileRes.ok ? (await profileRes.json()) : null;
   } catch {
     return null;
   }
@@ -134,43 +143,36 @@ async function handleChat(request, env, origin) {
   const { message, history = [], tasks = [] } = body;
   if (!message) return jsonResponse({ error: 'Missing message' }, 400, origin);
 
-  const [all, brain] = await Promise.all([
+  const [all, rawBrainCtx] = await Promise.all([
     Promise.all(SOURCES.map(async (s) => {
       const raw = await env.COMMS_DATA.get(s);
       return [s, raw ? JSON.parse(raw) : null];
     })).then(Object.fromEntries),
-    getBrainProfile(env),
+    getContextForQuery(message, env),
   ]);
 
   const tasksCtx = tasks.length
     ? `\n\nPending tasks: ${tasks.map((t) => `"${t.text}" [${t.tag}]`).join(', ')}`
     : '';
 
-  const fmtPeople = (arr) => (arr || []).map((p) => {
-    const base = `${p.name} (${p.role || p.relationship || ''})`;
-    return p.notes ? `${base}: ${p.notes}` : base;
-  }).join('\n  · ');
+  // rawBrainCtx is either a Mem0 context string or a legacy profile object (fallback)
+  let brainCtx = '';
+  if (typeof rawBrainCtx === 'string') {
+    brainCtx = rawBrainCtx;
+  } else if (rawBrainCtx && typeof rawBrainCtx === 'object') {
+    // Legacy profile object fallback
+    const fmtPeople = (arr) => (arr || []).map((p) => {
+      const base = `${p.name} (${p.role || p.relationship || ''})`;
+      return p.notes ? `${base}: ${p.notes}` : base;
+    }).join('\n  · ');
+    brainCtx = `
 
-  const brainCtx = brain ? `
-
-BRAIN PROFILE — synthesized from full email, calendar and Drive history:
-
-FAMILY (deep context):
-  · ${fmtPeople(brain.keyPeople?.family)}
-
-KEY PEOPLE — Adobe:
-  · ${fmtPeople(brain.keyPeople?.adobe)}
-
-KEY PEOPLE — Zyra:
-  · ${fmtPeople(brain.keyPeople?.zyra)}
-
-ACTIVE PROJECTS: ${(brain.activeProjects || []).map((p) => `${p.name}${p.notes ? ` (${p.notes})` : ''}`).join(', ')}
-
-WRITING STYLE: ${brain.writingStyle?.tone || ''} | Signoff: ${brain.writingStyle?.signoff || 'Court'}
-
-BEHAVIOR: peak hours ${(brain.behaviorPatterns?.peakHours || []).join(', ')} | priorities: ${(brain.behaviorPatterns?.prioritySignals || []).slice(0, 3).join('; ')}
-
-SPENDING: ${Object.entries(brain.spendingPatterns || {}).map(([k, v]) => `${k}: ${v?.description || v}`).join(' | ')}` : '';
+BRAIN PROFILE (synthesized snapshot):
+FAMILY: · ${fmtPeople(rawBrainCtx.keyPeople?.family)}
+ADOBE: · ${fmtPeople(rawBrainCtx.keyPeople?.adobe)}
+ZYRA: · ${fmtPeople(rawBrainCtx.keyPeople?.zyra)}
+PROJECTS: ${(rawBrainCtx.activeProjects || []).map((p) => p.name).join(', ')}`;
+  }
 
   const system = `You are Jon Jon, personal chief of staff for Courtney Remekie. You know him deeply.
 
