@@ -95,6 +95,22 @@ async function handlePost(source, request, env, origin) {
   return jsonResponse({ ok: true, results }, 200, origin);
 }
 
+async function getBrainProfile(env) {
+  try {
+    const cached = await env.COMMS_DATA.get('brain:profile:cache', 'json');
+    if (cached) return cached;
+    const res = await fetch('https://brain.compass-xsc.workers.dev/brain/profile', {
+      headers: { Authorization: `Bearer ${env.BRAIN_TOKEN}` },
+    });
+    if (!res.ok) return null;
+    const profile = await res.json();
+    await env.COMMS_DATA.put('brain:profile:cache', JSON.stringify(profile), { expirationTtl: 3600 });
+    return profile;
+  } catch {
+    return null;
+  }
+}
+
 async function webSearch(query) {
   try {
     const res = await fetch(
@@ -118,15 +134,28 @@ async function handleChat(request, env, origin) {
   const { message, history = [], tasks = [] } = body;
   if (!message) return jsonResponse({ error: 'Missing message' }, 400, origin);
 
-  const all = {};
-  await Promise.all(SOURCES.map(async (s) => {
-    const raw = await env.COMMS_DATA.get(s);
-    all[s] = raw ? JSON.parse(raw) : null;
-  }));
+  const [all, brain] = await Promise.all([
+    Promise.all(SOURCES.map(async (s) => {
+      const raw = await env.COMMS_DATA.get(s);
+      return [s, raw ? JSON.parse(raw) : null];
+    })).then(Object.fromEntries),
+    getBrainProfile(env),
+  ]);
 
   const tasksCtx = tasks.length
     ? `\n\nPending tasks: ${tasks.map((t) => `"${t.text}" [${t.tag}]`).join(', ')}`
     : '';
+
+  const brainCtx = brain ? `
+
+BRAIN PROFILE (synthesized from full email, calendar and Drive history):
+Key people Adobe: ${(brain.keyPeople?.adobe || []).map((p) => `${p.name} — ${p.role}`).join('; ')}
+Key people Zyra: ${(brain.keyPeople?.zyra || []).map((p) => `${p.name} — ${p.role}`).join('; ')}
+Family: ${(brain.keyPeople?.family || []).map((p) => `${p.name} — ${p.role}`).join('; ')}
+Active projects: ${(brain.activeProjects || []).map((p) => p.name).join(', ')}
+Writing style: ${brain.writingStyle?.tone || ''}
+Behavior patterns: ${JSON.stringify(brain.behaviorPatterns || {})}
+Spending patterns: ${JSON.stringify(brain.spendingPatterns || {})}` : '';
 
   const system = `You are Jon Jon, personal chief of staff for Courtney Remekie. You know him deeply.
 
@@ -141,7 +170,7 @@ Adobe — Bill Lofft (direct manager, flag as urgent), Jeff Figueiredo (skip-lev
 Zyra — Tyler Mulek (sales director, brother-in-law), Scott Laurie (Co-op buyer), Manny (Azucar), Kennedy (Red Bull Edmonton)
 Family — Jayleen, Theo, Kyra (daughter)
 
-STYLE: Direct, signs off "Court". Slack: punchy + emoji. Email: structured, plain text URLs. Always include numbers.
+STYLE: Direct, signs off "Court". Slack: punchy + emoji. Email: structured, plain text URLs. Always include numbers.${brainCtx}
 
 Live comms data: ${JSON.stringify(all)}${tasksCtx}
 
