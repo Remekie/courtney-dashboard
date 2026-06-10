@@ -683,6 +683,12 @@ body:has(.comms-dashboard) main > div > div {
 .cd-assistant-mic:hover { background: var(--s-gray-75); border-color: var(--s-gray-300); }
 .cd-assistant-mic.cd-mic-active { background: var(--s-red-100); border-color: var(--s-red-700); }
 
+/* Slack channel message expand */
+.cd-ctable details { cursor: pointer; }
+.cd-ctable details summary { color: var(--s-gray-500); }
+.cd-ctable details[open] summary { margin-bottom: var(--s-4); }
+.cd-person-chip-link { text-decoration: none; }
+
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .cd-grid-3 { grid-template-columns: 1fr 1fr; }

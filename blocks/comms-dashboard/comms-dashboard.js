@@ -97,7 +97,7 @@ function renderSlack(d) {
     return `<tr>
       <td class="cd-bold" style="white-space:nowrap">#${ch.name}</td>
       <td>${hasMore
-        ? `<details style="cursor:pointer"><summary class="cd-muted">"${short}…" — ${ch.lastMessageDate || ''}</summary><span class="cd-muted" style="display:block;margin-top:4px">"${ch.lastMessage}" — ${ch.lastMessageDate || ''}</span></details>`
+        ? `<details><summary class="cd-muted">"${short}…" — ${ch.lastMessageDate || ''}</summary><span class="cd-muted">"${ch.lastMessage}" — ${ch.lastMessageDate || ''}</span></details>`
         : `<span class="cd-muted">"${short}" — ${ch.lastMessageDate || ''}</span>`
       }</td>
     </tr>`;
@@ -109,7 +109,7 @@ function renderSlack(d) {
     const handle = slackPeople[p.name];
     const chip = `<span class="cd-av">${p.initials}</span>${p.name}`;
     return handle
-      ? `<a href="${slackBase}${handle}" target="_blank" class="cd-person-chip" style="text-decoration:none">${chip}</a>`
+      ? `<a href="${slackBase}${handle}" target="_blank" class="cd-person-chip cd-person-chip-link">${chip}</a>`
       : `<span class="cd-person-chip">${chip}</span>`;
   }).join('');
 
