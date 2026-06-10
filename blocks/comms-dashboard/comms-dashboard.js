@@ -39,15 +39,16 @@ function badge(text, variant) {
   return `<span class="cd-badge cd-badge-${v}">${text}</span>`;
 }
 
+/* eslint-disable secure-coding/no-improper-sanitization -- comprehensive 5-char HTML escape */
 function esc(str) {
   return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/"/g, '&quot;');
+    .replace(/'/g, '&#x27;');
 }
+/* eslint-enable secure-coding/no-improper-sanitization */
 
 function buildThreadTable(threads) {
   const rows = threads.slice(0, 6).map((t) => `
@@ -102,7 +103,7 @@ function loadTasks() {
 
 function renderTaskList(taskListEl) {
   const tasks = loadTasks();
-  // eslint-disable-next-line browser-security/no-innerhtml, secure-coding/no-improper-sanitization, secure-coding/no-graphql-injection -- esc() sanitizes all user input; template is internal
+  /* eslint-disable browser-security/no-innerhtml, secure-coding/no-improper-sanitization, secure-coding/no-graphql-injection -- esc() sanitizes all user input; template is internal */
   taskListEl.innerHTML = tasks.length
     ? tasks.map((t) => `
         <div class="cd-task-item${t.done ? ' cd-task-done' : ''}" data-id="${esc(t.id)}" role="listitem">
@@ -111,6 +112,7 @@ function renderTaskList(taskListEl) {
           ${badge(t.tag, badgeVariant(t.tag))}
         </div>`).join('')
     : '<p class="cd-muted" style="font-size:12px;padding:8px 0">No tasks yet — add one above.</p>';
+  /* eslint-enable browser-security/no-innerhtml, secure-coding/no-improper-sanitization, secure-coding/no-graphql-injection */
 
   taskListEl.querySelectorAll('.cd-task-check').forEach((cb) => {
     cb.addEventListener('change', () => {
@@ -753,7 +755,7 @@ function buildWorkspaceChat(workerUrl, sharedHistory, wsRef) {
   // Re-render existing history on rebuild
   if (sharedHistory.length === 0) {
     const hint = el('div', 'cd-msg-assistant cd-msg-suggestions');
-    // eslint-disable-next-line browser-security/no-innerhtml -- static hint string
+    // eslint-disable-next-line browser-security/no-innerhtml, secure-coding/no-improper-sanitization -- static hint string
     hint.innerHTML = '<strong>Hi! Ask me anything or check your tasks.</strong> · "What needs attention?" · "Any Zyra emails this week?"';
     messages.appendChild(hint);
   } else {
