@@ -95,6 +95,22 @@ async function handlePost(source, request, env, origin) {
   return jsonResponse({ ok: true, results }, 200, origin);
 }
 
+async function webSearch(query) {
+  try {
+    const res = await fetch(
+      `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`,
+    );
+    const d = await res.json();
+    const parts = [];
+    if (d.Answer) parts.push(d.Answer);
+    if (d.AbstractText) parts.push(d.AbstractText);
+    (d.RelatedTopics || []).slice(0, 4).forEach((t) => { if (t.Text) parts.push(t.Text); });
+    return parts.length ? parts.join('\n') : 'No results found.';
+  } catch {
+    return 'Search unavailable.';
+  }
+}
+
 async function handleChat(request, env, origin) {
   let body;
   try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400, origin); }
@@ -111,28 +127,68 @@ async function handleChat(request, env, origin) {
   const tasksCtx = tasks.length
     ? `\n\nPending tasks: ${tasks.map((t) => `"${t.text}" [${t.tag}]`).join(', ')}`
     : '';
-  const system = `You are Court's Co-worker, a personal assistant for Courtney Remekie (Adobe Solutions Consultant, Edmonton MDT).
-Live comms data: ${JSON.stringify(all)}${tasksCtx}
-Be concise. For write actions (send email, post to Slack, create calendar event), describe what you will do and ask for confirmation before acting.`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const system = `You are Jon Jon, personal chief of staff for Courtney Remekie. You know him deeply.
+
+WHO HE IS:
+- Senior Manager, Adobe AEM XSC (Expert Solution Consultants) — Americas. Team: John Green, Jim McGowan, Joe Bianco, Lisa Strickland, Liviu Chis.
+- Founder, Zyra Spirits Inc. (Alberta craft vodka: Gold, Coco Mist, Root Beer Rush). Retail: Co-op (5 locations). On-premise: Hudson's, GRETA, Public Exchange, Azucar.
+- Married to Jayleen (Pop Top Cocktails). Son Theo (club soccer + football). Daughter (Red Deer Polytechnic, college soccer).
+- Edmonton, Alberta. Timezone: America/Edmonton. Philosophy: efficiency over optics, no fluff, numbers-forward.
+
+KEY PEOPLE:
+Adobe — Bill Lofft (direct manager, flag as urgent), Jeff Figueiredo (skip-level, flag as urgent), John Green, Jim McGowan, Joe Bianco, Lisa Strickland, Liviu Chis
+Zyra — Tyler Mulek (sales director, brother-in-law), Scott Laurie (Co-op buyer), Manny (Azucar), Kennedy (Red Bull Edmonton)
+Family — Jayleen, Theo, Kyra (daughter)
+
+STYLE: Direct, signs off "Court". Slack: punchy + emoji. Email: structured, plain text URLs. Always include numbers.
+
+Live comms data: ${JSON.stringify(all)}${tasksCtx}
+
+You can search the web for current information. Be concise. For write actions, describe and confirm before acting.`;
+
+  const tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }];
+
+  const callClaude = (msgs) => fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'anthropic-version': '2023-06-01',
+      'anthropic-beta': 'web-search-2025-03-05',
       'x-api-key': env.ANTHROPIC_API_KEY,
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system,
-      messages: [...history, { role: 'user', content: message }],
+      tools,
+      messages: msgs,
     }),
   });
 
+  const msgs = [...history, { role: 'user', content: message }];
+  let res = await callClaude(msgs);
   if (!res.ok) return jsonResponse({ error: 'Claude API error' }, 502, origin);
-  const data = await res.json();
-  const reply = data.content?.[0]?.text;
+  let data = await res.json();
+
+  // Tool use loop — handles web_search rounds
+  let rounds = 0;
+  while (data.stop_reason === 'tool_use' && rounds < 3) {
+    rounds++;
+    const toolUseBlocks = data.content.filter((b) => b.type === 'tool_use');
+    msgs.push({ role: 'assistant', content: data.content });
+    const toolResults = await Promise.all(toolUseBlocks.map(async (b) => ({
+      type: 'tool_result',
+      tool_use_id: b.id,
+      content: b.name === 'web_search' ? await webSearch(b.input?.query || '') : '',
+    })));
+    msgs.push({ role: 'user', content: toolResults });
+    res = await callClaude(msgs);
+    if (!res.ok) break;
+    data = await res.json();
+  }
+
+  const reply = data.content?.find((b) => b.type === 'text')?.text;
   if (!reply) return jsonResponse({ error: 'Empty response from Claude' }, 502, origin);
   return jsonResponse({ reply }, 200, origin);
 }
