@@ -445,10 +445,10 @@ async function ingestZyraEmail(db, body) {
 
 async function synthesize(env, db) {
   const [people, events, interactions, projects, transactions] = await Promise.all([
-    db.prepare('SELECT * FROM people ORDER BY relationship_strength DESC LIMIT 50').all(),
-    db.prepare('SELECT * FROM events ORDER BY start_time DESC LIMIT 100').all(),
-    db.prepare('SELECT * FROM interactions ORDER BY created_at DESC LIMIT 200').all(),
-    db.prepare('SELECT * FROM projects WHERE status = "active"').all(),
+    db.prepare('SELECT * FROM people ORDER BY relationship_strength DESC LIMIT 100').all(),
+    db.prepare('SELECT * FROM events ORDER BY start_time DESC LIMIT 250').all(),
+    db.prepare('SELECT * FROM interactions ORDER BY created_at DESC LIMIT 500').all(),
+    db.prepare('SELECT * FROM projects WHERE status = "active" LIMIT 100').all(),
     db.prepare('SELECT * FROM transactions ORDER BY date DESC LIMIT 100').all(),
   ]);
 
@@ -460,26 +460,40 @@ async function synthesize(env, db) {
     transactions: transactions.results,
   };
 
-  const prompt = `You are building a persistent identity profile for Courtney Remekie.
+  const prompt = `You are building a deeply reasoned personal intelligence profile for Courtney Remekie. This is NOT a data-formatting task. You must REASON and INFER the way a perceptive chief of staff would after reading thousands of emails and calendar entries.
 
-Known context:
-- Senior Manager, Adobe AEM XSC team. Leading Project Compass, EDS/AI roadshows across Americas.
-- Founder, Zyra Spirits Inc. (Alberta craft vodka: Gold, Coco Mist, Root Beer Rush). Active retail + on-premise in Edmonton.
-- Married to Jayleen (Pop Top Cocktails). Son Theo (club soccer + football). Daughter (college soccer, Red Deer Polytechnic).
-- Based in Edmonton, Alberta. Timezone: America/Edmonton.
-- Philosophy: efficiency over optics, tech-buyer trust over magic, no fluff.
+REASONING RULES — apply these:
+1. Infer people's real jobs from email domains and context. If Jayleen appears in emails from or related to @casa.ab.ca or CASA (Child and Adolescent Services Association of Alberta), note her day job. Same logic for any contact — domain = employer.
+2. Infer relationship depth from frequency, directionality (who initiates), and response patterns.
+3. Identify recurring commitments from calendar patterns — weekly/bi-weekly = standing obligation.
+4. Detect project status from email thread activity — active thread = live project, silence = stalled.
+5. Extract business intel from vendor, distributor, and retail email patterns (what products, volumes, suppliers).
+6. Surface anything surprising or non-obvious — unexpected contacts, unusual spending, pattern breaks.
+7. For family members especially: what do they actually DO? Cross-reference their emails, calendar invites, and communication patterns to build a full picture.
+8. Writing style: infer from subject line patterns in sent emails — how does he phrase asks? How direct?
 
-Ingested data from last 90 days:
+Base context (treat as confirmed, enrich from data):
+- Senior Manager, Adobe AEM XSC, Americas. Team: John Green, Jim McGowan, Joe Bianco, Lisa Strickland, Liviu Chis.
+- Founder, Zyra Spirits Inc. (Alberta craft vodka). Tyler Mulek = sales director + brother-in-law.
+- Married to Jayleen. Son Theo (club soccer + football). Daughter Kyra (Red Deer Polytechnic).
+- Edmonton, Alberta.
+
+Data corpus (${interactions.results.length} interactions, ${people.results.length} people, ${events.results.length} events):
 ${JSON.stringify(data, null, 2)}
 
-Analyze this data and return a JSON profile matching this exact schema (no prose, no markdown — pure JSON):
+Return a JSON profile (pure JSON, no prose, no markdown fences):
 {
   "identity": { "name": "Courtney Remekie", "pronouns": "he/him", "location": "Edmonton, Alberta", "timezone": "America/Edmonton", "roles": [], "philosophy": "" },
-  "writingStyle": { "tone": "", "signoff": "Court", "slackStyle": "", "emailStyle": "" },
-  "keyPeople": { "adobe": [], "zyra": [], "family": [] },
-  "activeProjects": [],
+  "writingStyle": { "tone": "", "signoff": "Court", "slackStyle": "", "emailStyle": "", "patterns": [] },
+  "keyPeople": {
+    "adobe": [{"name":"","role":"","email":"","notes":""}],
+    "zyra": [{"name":"","role":"","email":"","notes":""}],
+    "family": [{"name":"","role":"","dayJob":"","email":"","notes":""}],
+    "community": [{"name":"","role":"","email":"","notes":""}]
+  },
+  "activeProjects": [{"name":"","world":"","status":"","notes":""}],
   "spendingPatterns": {},
-  "behaviorPatterns": { "peakHours": [], "ignoredTopics": [], "prioritySignals": [] },
+  "behaviorPatterns": { "peakHours": [], "ignoredTopics": [], "prioritySignals": [], "communicationPatterns": [] },
   "lastSynthesized": "${new Date().toISOString()}"
 }`;
 
@@ -492,7 +506,7 @@ Analyze this data and return a JSON profile matching this exact schema (no prose
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
