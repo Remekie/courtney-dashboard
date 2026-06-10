@@ -94,25 +94,30 @@ function renderSlack(d) {
     }
     const short = ch.lastMessage.length > 80 ? ch.lastMessage.slice(0, 80) : ch.lastMessage;
     const hasMore = ch.lastMessage.length > 80;
-    const id = `ch-${ch.name.replace(/\W/g, '')}`;
     return `<tr>
       <td class="cd-bold" style="white-space:nowrap">#${ch.name}</td>
-      <td>
-        <span class="cd-muted cd-msg-short" id="${id}-short">"${short}${hasMore ? '…' : ''}" — ${ch.lastMessageDate || ''}</span>
-        ${hasMore ? `<span class="cd-msg-full" id="${id}-full" hidden>"${ch.lastMessage}" <span class="cd-muted">— ${ch.lastMessageDate || ''}</span></span>
-        <button class="cd-msg-toggle" onclick="(function(){var s=document.getElementById('${id}-short'),f=document.getElementById('${id}-full');s.hidden=!s.hidden;f.hidden=!f.hidden;this.textContent=f.hidden?'more':'less'}).call(this)" style="background:none;border:none;color:var(--s-blue-700);cursor:pointer;font-size:10px;padding:0 4px">more</button>` : ''}
-      </td>
+      <td>${hasMore
+        ? `<details style="cursor:pointer"><summary class="cd-muted">"${short}…" — ${ch.lastMessageDate || ''}</summary><span class="cd-muted" style="display:block;margin-top:4px">"${ch.lastMessage}" — ${ch.lastMessageDate || ''}</span></details>`
+        : `<span class="cd-muted">"${short}" — ${ch.lastMessageDate || ''}</span>`
+      }</td>
     </tr>`;
   }).join('');
 
-  const people = (sd.priorityPeople || [])
-    .map((p) => personChip(p.initials, p.name)).join('');
+  const slackBase = 'https://adobe.slack.com/team/';
+  const slackPeople = { 'Bill Lofft': 'blofft', 'Bridget Portela': 'bportela', 'Emily Jansen': 'estange', 'Jake Monsen': 'monsen', 'Jeff Figueiredo': 'jfigueir' };
+  const people = (sd.priorityPeople || []).map((p) => {
+    const handle = slackPeople[p.name];
+    const chip = `<span class="cd-av">${p.initials}</span>${p.name}`;
+    return handle
+      ? `<a href="${slackBase}${handle}" target="_blank" class="cd-person-chip" style="text-decoration:none">${chip}</a>`
+      : `<span class="cd-person-chip">${chip}</span>`;
+  }).join('');
 
   const mentions = (sd.mentions || []).map((m) => `
     <tr>
       <td class="cd-col-date">${m.date}</td>
       <td class="cd-bold">${m.from}</td>
-      <td>${m.channel}</td>
+      <td class="cd-muted" style="font-size:11px">${m.message || m.channel || ''}</td>
     </tr>`).join('');
 
   return `
@@ -129,7 +134,7 @@ function renderSlack(d) {
     <div class="cd-people-wrap">${people || '<span class="cd-muted">No people configured</span>'}</div>
     <span class="cd-section-label">Direct @mentions</span>
     <table class="cd-ctable">
-      <thead><tr><th>Date</th><th>From</th><th>Channel</th></tr></thead>
+      <thead><tr><th>Date</th><th>From</th><th>Message</th></tr></thead>
       <tbody>${mentions || '<tr><td colspan="3" class="cd-muted">No recent mentions</td></tr>'}</tbody>
     </table>
     <div class="cd-action-row">
