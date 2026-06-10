@@ -319,6 +319,7 @@ function renderGmail(d) {
     <tr>
       <td class="cd-bold">${m.from}</td>
       <td>${m.subject}</td>
+      <td class="cd-col-date">${m.date ? `${m.date}${m.time ? ` · ${m.time}` : ''}` : ''}</td>
       <td class="cd-col-tag">${badge(m.tag, badgeVariant(m.tag))}</td>
     </tr>`).join('') : null;
 
@@ -337,7 +338,7 @@ function renderGmail(d) {
     <div class="cd-filter-pill">Family filter: Theo · Soccer · Football · Jayleen · Kyra</div>
     ${rows
       ? `<table class="cd-ctable cd-mt-16">
-          <thead><tr><th>From</th><th>Subject</th><th class="cd-col-tag">Tag</th></tr></thead>
+          <thead><tr><th>From</th><th>Subject</th><th class="cd-col-date">Date</th><th class="cd-col-tag">Tag</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>`
       : '<div class="cd-empty-state"><div class="cd-empty-title">Gmail not connected</div>n8n Gmail OAuth2 node → POST /data/gmail</div>'}`;
