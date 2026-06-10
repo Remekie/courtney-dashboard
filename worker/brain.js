@@ -200,10 +200,6 @@ async function ingestGmail(env, db) {
   let personCount = 0;
   let interactionCount = 0;
 
-  const personStmt = db.prepare(
-    `INSERT OR REPLACE INTO people (id, name, email, world, last_contact, relationship_strength)
-     VALUES (?, ?, ?, ?, ?, COALESCE((SELECT relationship_strength + 1 FROM people WHERE id = ?), 1))`,
-  );
   const interactionStmt = db.prepare(
     `INSERT OR IGNORE INTO interactions (id, type, source, content_summary, world, created_at)
      VALUES (?, 'email', 'gmail', ?, ?, ?)`,
@@ -292,7 +288,7 @@ async function ingestCalendar(env, db) {
 
 // ── Ingest: manual JSON ───────────────────────────────────
 
-async function ingestJson(env, db, body) {
+async function ingestJson(db, body) {
   const { type, data } = body;
 
   if (type === 'person' && data) {
@@ -562,7 +558,7 @@ export default {
     // GET /brain/people
     if (path === '/brain/people' && request.method === 'GET') {
       const world = url.searchParams.get('world');
-      const limit = Math.min(Number(url.searchParams.get('limit') || 50), 200);
+      const limit = Math.min(Number(url.searchParams.get('limit') || 50) || 50, 200);
       const stmt = world
         ? env.DB.prepare('SELECT * FROM people WHERE world = ? ORDER BY relationship_strength DESC LIMIT ?').bind(world, limit)
         : env.DB.prepare('SELECT * FROM people ORDER BY relationship_strength DESC LIMIT ?').bind(limit);
@@ -584,7 +580,7 @@ export default {
         } else if (type === 'gcalendar') {
           result = await ingestCalendar(env, env.DB);
         } else if (['person', 'project', 'transaction'].includes(type)) {
-          result = await ingestJson(env, env.DB, body);
+          result = await ingestJson(env.DB, body);
         } else {
           return json({ error: `Unknown ingest type: ${type}. Supported: gmail, gcalendar, person, project, transaction` }, 400, origin);
         }
