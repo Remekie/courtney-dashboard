@@ -324,6 +324,55 @@ async function ingestJson(db, body) {
   return { ok: true, message: `No handler for type: ${type}` };
 }
 
+// ── Ingest: Zyra emails (from n8n IMAP) ──────────────────
+
+async function ingestZyraEmail(db, body) {
+  const { emails = [] } = body;
+  let personCount = 0;
+  let interactionCount = 0;
+
+  const interactionStmt = db.prepare(
+    `INSERT OR IGNORE INTO interactions (id, type, source, content_summary, world, created_at)
+     VALUES (?, 'email', 'zyra', ?, 'zyra', ?)`,
+  );
+
+  for (const email of emails) {
+    // Sent: extract To (who Courtney emailed). Inbox: extract From.
+    const contactHeader = email.isSent ? (email.to || '') : (email.from || '');
+    const contact = parseEmail(contactHeader);
+    if (!contact.email) continue;
+
+    // Skip own Zyra address
+    const ce = contact.email.toLowerCase();
+    if (ce.includes('drinkzyra') || ce.includes('courtney@') || ce.includes('remekie')) continue;
+
+    const date = email.date ? new Date(email.date).toISOString() : new Date().toISOString();
+    const personId = `zyra-${contact.email.replace(/[^a-z0-9]/gi, '-')}`;
+    const strengthBoost = email.isSent ? 2 : 1;
+    const uniqueId = `zyra-email-${personId}-${date}`;
+
+    await db.batch([
+      db.prepare(
+        `INSERT OR REPLACE INTO people (id, name, email, world, last_contact, relationship_strength)
+         VALUES (?, ?, ?, 'zyra', ?, COALESCE((SELECT relationship_strength + ? FROM people WHERE id = ?), ?))`,
+      ).bind(personId, contact.name, contact.email, date, strengthBoost, personId, strengthBoost),
+      interactionStmt.bind(
+        uniqueId,
+        `${email.isSent ? '→ Sent to' : '← From'} ${contact.name}: ${email.subject || '(no subject)'}`,
+        date,
+      ),
+    ]);
+    personCount++;
+    interactionCount++;
+  }
+
+  await db.prepare(
+    `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'zyra_email', ?, 'ok')`,
+  ).bind(`log-${Date.now()}`, personCount).run();
+
+  return { people: personCount, interactions: interactionCount };
+}
+
 // ── Synthesize profile ────────────────────────────────────
 
 async function synthesize(env, db) {
@@ -579,10 +628,12 @@ export default {
           result = await ingestGmail(env, env.DB);
         } else if (type === 'gcalendar') {
           result = await ingestCalendar(env, env.DB);
+        } else if (type === 'zyra_email') {
+          result = await ingestZyraEmail(env.DB, body);
         } else if (['person', 'project', 'transaction'].includes(type)) {
           result = await ingestJson(env.DB, body);
         } else {
-          return json({ error: `Unknown ingest type: ${type}. Supported: gmail, gcalendar, person, project, transaction` }, 400, origin);
+          return json({ error: `Unknown ingest type: ${type}. Supported: gmail, gcalendar, zyra_email, person, project, transaction` }, 400, origin);
         }
 
         await env.KV.put('brain:needs_synthesis', 'true');
