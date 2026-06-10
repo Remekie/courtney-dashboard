@@ -555,7 +555,8 @@ body:has(.comms-dashboard) main > div > div {
   box-shadow: 0 8px 32px rgb(0 0 0 / .16), 0 2px 8px rgb(0 0 0 / .08);
   overflow: hidden;
 }
-.cd-assistant-panel[hidden] { display: none; }
+.cd-assistant-panel { display: none; }
+.cd-assistant-panel.is-open { display: flex; }
 
 .cd-assistant-header {
   background: var(--s-gray-900);
@@ -690,6 +691,7 @@ body:has(.comms-dashboard) main > div > div {
 .comms-dashboard .cd-channel-name { white-space: nowrap; }
 .comms-dashboard .cd-mention-msg { font-size: var(--s-text-11); }
 .comms-dashboard .cd-person-chip-link { text-decoration: none; }
+.comms-dashboard .cd-flagged-item { margin-bottom: var(--s-4); }
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 1024px) {

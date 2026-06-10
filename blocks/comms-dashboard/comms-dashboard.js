@@ -229,7 +229,7 @@ function renderOutlook(d) {
 
   const flagged = od.flagged || [];
   const flaggedContent = flagged.length
-    ? flagged.map((f) => `<div class="cd-bold" style="margin-bottom:4px">${f.subject}</div>`).join('')
+    ? flagged.map((f) => `<div class="cd-bold cd-flagged-item">${f.subject}</div>`).join('')
     : `<span class="cd-muted">No flagged emails</span>`;
 
   return `
@@ -525,7 +525,6 @@ function renderFiles(d) {
 
 function buildAssistant(data, workerUrl) {
   const panel = el('div', 'cd-assistant-panel');
-  panel.hidden = true;
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', "Court's Co-worker");
   panel.innerHTML = `
@@ -553,7 +552,7 @@ function buildAssistant(data, workerUrl) {
       <button class="cd-assistant-send" aria-label="Send message">Send</button>
     </div>`;
 
-  panel.querySelector('.cd-assistant-close').addEventListener('click', () => { panel.hidden = true; });
+  panel.querySelector('.cd-assistant-close').addEventListener('click', () => { panel.classList.remove('is-open'); });
 
   const messages = panel.querySelector('.cd-assistant-messages');
   const input = panel.querySelector('.cd-assistant-input');
@@ -784,24 +783,26 @@ export default async function decorate(block) {
   let assistantPanel = buildAssistant(data || {}, workerUrl);
   block.appendChild(assistantPanel);
 
-  fab.querySelector('button').addEventListener('click', () => {
-    assistantPanel.hidden = !assistantPanel.hidden;
-  });
+  const toggleAssistant = () => assistantPanel.classList.toggle('is-open');
+
+  fab.querySelector('button').addEventListener('click', toggleAssistant);
 
   // Close assistant on Escape
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !assistantPanel.hidden) assistantPanel.hidden = true;
+    if (e.key === 'Escape') assistantPanel.classList.remove('is-open');
   });
 
-  // Poll every 60s
+  // Poll every 60s — preserve open state across rebuilds
   setInterval(async () => {
     const fresh = await fetchData(workerUrl);
     if (fresh) {
+      const wasOpen = assistantPanel.classList.contains('is-open');
       renderAll(block, panels, fresh);
       assistantPanel.remove();
       assistantPanel = buildAssistant(fresh, workerUrl);
+      if (wasOpen) assistantPanel.classList.add('is-open');
       block.appendChild(assistantPanel);
-      fab.querySelector('button').onclick = () => { assistantPanel.hidden = !assistantPanel.hidden; };
+      fab.querySelector('button').onclick = toggleAssistant;
     }
   }, POLL_INTERVAL);
 }
