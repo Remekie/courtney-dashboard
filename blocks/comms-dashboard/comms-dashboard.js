@@ -658,9 +658,9 @@ function renderAll(block, panels, data) {
     <div class="cd-grid-2 cd-personal-grid">
       <div class="cd-card">${renderGmail(d)}</div>
       <div class="cd-card">${renderZyra(d)}</div>
+      <div class="cd-card cd-full-width">${renderFamilyCalendar(d)}</div>
       <div class="cd-card">${renderMessages(d)}</div>
       <div class="cd-card">${renderWhatsApp(d)}</div>
-      <div class="cd-card cd-full-width">${renderFamilyCalendar(d)}</div>
     </div>`;
 
   // Files
