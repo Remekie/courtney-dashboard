@@ -164,18 +164,30 @@ async function getGoogleToken(env) {
 async function ingestGmail(env, db) {
   const token = await getGoogleToken(env);
 
-  // Fetch recent inbox AND sent — sent emails are stronger relationship signal
+  // Pagination cursors — resumes from last position across calls
+  const inboxCursor = await env.KV.get('brain:cursor:gmail:inbox') || '';
+  const sentCursor = await env.KV.get('brain:cursor:gmail:sent') || '';
+
+  const inboxUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=200&labelIds=INBOX${inboxCursor ? `&pageToken=${inboxCursor}` : ''}`;
+  const sentUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=200&labelIds=SENT${sentCursor ? `&pageToken=${sentCursor}` : ''}`;
+
   const [inboxRes, sentRes] = await Promise.all([
-    fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=40&labelIds=INBOX',
-      { headers: { Authorization: `Bearer ${token}` } }),
-    fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=60&labelIds=SENT',
-      { headers: { Authorization: `Bearer ${token}` } }),
+    fetch(inboxUrl, { headers: { Authorization: `Bearer ${token}` } }),
+    fetch(sentUrl, { headers: { Authorization: `Bearer ${token}` } }),
   ]);
   if (!inboxRes.ok) throw new Error(`Gmail inbox list failed: ${inboxRes.status}`);
   if (!sentRes.ok) throw new Error(`Gmail sent list failed: ${sentRes.status}`);
 
-  const { messages: inboxMsgs = [] } = await inboxRes.json();
-  const { messages: sentMsgs = [] } = await sentRes.json();
+  const inboxData = await inboxRes.json();
+  const sentData = await sentRes.json();
+  const { messages: inboxMsgs = [], nextPageToken: inboxNext } = inboxData;
+  const { messages: sentMsgs = [], nextPageToken: sentNext } = sentData;
+
+  // Save next cursors (delete if last page)
+  if (inboxNext) await env.KV.put('brain:cursor:gmail:inbox', inboxNext);
+  else await env.KV.delete('brain:cursor:gmail:inbox');
+  if (sentNext) await env.KV.put('brain:cursor:gmail:sent', sentNext);
+  else await env.KV.delete('brain:cursor:gmail:sent');
 
   // Tag each message with its source so we know which header to extract
   const toFetch = [
@@ -246,7 +258,7 @@ async function ingestGmail(env, db) {
     `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'gmail', ?, 'ok')`,
   ).bind(`log-${Date.now()}`, personCount).run();
 
-  return { people: personCount, interactions: interactionCount, inbox: inboxMsgs.length, sent: sentMsgs.length };
+  return { people: personCount, interactions: interactionCount, inbox: inboxMsgs.length, sent: sentMsgs.length, hasMore: !!(inboxNext || sentNext) };
 }
 
 // ── Ingest: Google Calendar ───────────────────────────────
@@ -254,15 +266,17 @@ async function ingestGmail(env, db) {
 async function ingestCalendar(env, db) {
   const token = await getGoogleToken(env);
 
-  const timeMin = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
-  const timeMax = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+  const cursor = await env.KV.get('brain:cursor:gcalendar') || '';
+  const timeMin = new Date(Date.now() - 5 * 365 * 24 * 60 * 60 * 1000).toISOString();
+  const timeMax = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
-  const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=250&singleEvents=true&orderBy=startTime`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
+  const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&maxResults=2500&singleEvents=true&orderBy=startTime${cursor ? `&pageToken=${cursor}` : ''}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`Calendar fetch failed: ${res.status}`);
-  const { items = [] } = await res.json();
+  const { items = [], nextPageToken } = await res.json();
+
+  if (nextPageToken) await env.KV.put('brain:cursor:gcalendar', nextPageToken);
+  else await env.KV.delete('brain:cursor:gcalendar');
 
   const stmt = db.prepare(
     `INSERT OR REPLACE INTO events (id, title, start_time, end_time, attendees, source, world)
@@ -283,7 +297,7 @@ async function ingestCalendar(env, db) {
     `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'gcalendar', ?, 'ok')`,
   ).bind(`log-${Date.now()}`, count).run();
 
-  return { events: count };
+  return { events: count, hasMore: !!nextPageToken };
 }
 
 // ── Ingest: Google Drive ─────────────────────────────────
@@ -291,12 +305,14 @@ async function ingestCalendar(env, db) {
 async function ingestDrive(env, db) {
   const token = await getGoogleToken(env);
 
-  const res = await fetch(
-    'https://www.googleapis.com/drive/v3/files?orderBy=modifiedTime+desc&pageSize=200&fields=files(id,name,mimeType,modifiedTime,sharingUser,lastModifyingUser,sharedWithMeTime)',
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
+  const cursor = await env.KV.get('brain:cursor:gdrive') || '';
+  const url = `https://www.googleapis.com/drive/v3/files?orderBy=modifiedTime+desc&pageSize=1000&fields=files(id,name,mimeType,modifiedTime,sharingUser,lastModifyingUser,sharedWithMeTime),nextPageToken${cursor ? `&pageToken=${cursor}` : ''}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`Drive fetch failed: ${res.status}`);
-  const { files = [] } = await res.json();
+  const { files = [], nextPageToken } = await res.json();
+
+  if (nextPageToken) await env.KV.put('brain:cursor:gdrive', nextPageToken);
+  else await env.KV.delete('brain:cursor:gdrive');
 
   let personCount = 0;
   let projectCount = 0;
@@ -335,7 +351,7 @@ async function ingestDrive(env, db) {
     `INSERT INTO ingestion_log (id, source, record_count, status) VALUES (?, 'gdrive', ?, 'ok')`,
   ).bind(`log-${Date.now()}`, personCount + projectCount).run();
 
-  return { people: personCount, projects: projectCount };
+  return { people: personCount, projects: projectCount, hasMore: !!nextPageToken };
 }
 
 // ── Ingest: manual JSON ───────────────────────────────────
